@@ -1,0 +1,14 @@
+{
+  "schema": "emcore.q2-request.v1",
+  "mode": "IDLE",
+  "source_repository": "emcore-project/emcore",
+  "release_commit": "f57337c622d533a0200e51fcdf798deae5130754",
+  "release_tree": "cd36bfbf4dc333b8d144b847ab13e169e183eae9",
+  "expected_open_pr_count": 0,
+  "target_worker": "emcore-web-pilot",
+  "target_config": "apps/web/wrangler.pilot.jsonc",
+  "pilot_base_url": "https://emcore-web-pilot.emcore-project.workers.dev",
+  "zero_cost_required": true,
+  "document_ingestion_enabled": false,
+  "deployment_authorized": false
+}
