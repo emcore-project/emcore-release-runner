@@ -1,0 +1,10 @@
+{
+  "schema": "emcore.release-request.v1",
+  "mode": "IDLE",
+  "source_repository": "emcore-project/emcore",
+  "release_commit": "f57337c622d533a0200e51fcdf798deae5130754",
+  "release_tree": "cd36bfbf4dc333b8d144b847ab13e169e183eae9",
+  "expected_open_pr_count": 0,
+  "deployment_authorized": false,
+  "cloudflare_access_authorized": false
+}
