@@ -1,0 +1,139 @@
+name: EMCORE Q1 Cloudflare Read-Only
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - q1-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q1-cloudflare-readonly
+  cancel-in-progress: false
+
+jobs:
+  qualify-cloudflare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate Q1 request
+        id: request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const request = JSON.parse(fs.readFileSync('q1-request.json', 'utf8'));
+          const required = {
+            schema: 'emcore.q1-request.v1',
+            source_repository: 'emcore-project/emcore',
+            source_commit: 'f57337c622d533a0200e51fcdf798deae5130754',
+            source_tree: 'cd36bfbf4dc333b8d144b847ab13e169e183eae9',
+            expected_open_pr_count: 0,
+            target_worker: 'emcore-web-pilot',
+            cloudflare_read_only: true,
+            deployment_authorized: false,
+          };
+          for (const [key, value] of Object.entries(required)) {
+            if (request[key] !== value) throw new Error(`q1-request mismatch for ${key}`);
+          }
+          if (!['IDLE', 'QUALIFY'].includes(request.mode)) {
+            throw new Error('q1-request mode must be IDLE or QUALIFY');
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `mode=${request.mode}\n`);
+          NODE
+
+      - name: Stop safely while IDLE
+        if: steps.request.outputs.mode == 'IDLE'
+        shell: bash
+        run: echo "Q1 is prepared but not activated. No Cloudflare secret was read."
+
+      - name: Require Q1 secrets
+        if: steps.request.outputs.mode == 'QUALIFY'
+        shell: bash
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$EMCORE_SOURCE_TOKEN" || { echo "EMCORE_SOURCE_TOKEN missing; fail closed."; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN missing; fail closed."; exit 1; }
+
+      - name: Checkout exact private EMCORE source
+        if: steps.request.outputs.mode == 'QUALIFY'
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: f57337c622d533a0200e51fcdf798deae5130754
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source identity
+        if: steps.request.outputs.mode == 'QUALIFY'
+        shell: bash
+        working-directory: source
+        run: |
+          test "$(git rev-parse HEAD)" = "f57337c622d533a0200e51fcdf798deae5130754" || { echo "Commit mismatch; fail closed."; exit 1; }
+          test "$(git rev-parse 'HEAD^{tree}')" = "cd36bfbf4dc333b8d144b847ab13e169e183eae9" || { echo "Tree mismatch; fail closed."; exit 1; }
+          echo "Exact source identity verified."
+
+      - name: Verify zero open source pull requests
+        if: steps.request.outputs.mode == 'QUALIFY'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          count="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100"             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).length)))')"
+          test "$count" = "0" || { echo "Open pull requests detected; fail closed."; exit 1; }
+          echo "Open pull request count verified at zero."
+
+      - name: Set up Node
+        if: steps.request.outputs.mode == 'QUALIFY'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install exact source dependencies
+        if: steps.request.outputs.mode == 'QUALIFY'
+        working-directory: source
+        shell: bash
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Read current deployment state for target Worker only
+        if: steps.request.outputs.mode == 'QUALIFY'
+        working-directory: source
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set +x
+          output="$(npm exec --workspace @emcore/web -- wrangler deployments status --name emcore-web-pilot --json 2>q1-cloudflare.err)" || {
+            code=$?
+            echo "Cloudflare read-only Worker access failed; fail closed."
+            sed -E 's/[A-Za-z0-9_-]{32,}/[redacted]/g' q1-cloudflare.err
+            exit "$code"
+          }
+          rm -f q1-cloudflare.err
+          test -n "$output" || { echo "Cloudflare returned no deployment state; fail closed."; exit 1; }
+          printf '%s' "$output" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              JSON.parse(s);
+              process.stdout.write("Target Worker read-only deployment state verified.\n");
+            });
+          '
+
+      - name: Q1 qualification complete
+        if: steps.request.outputs.mode == 'QUALIFY'
+        shell: bash
+        run: |
+          echo "Q1 PASS: stored Cloudflare credential successfully read deployment state for emcore-web-pilot."
+          echo "No Cloudflare mutation or deployment was attempted."
