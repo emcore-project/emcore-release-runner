@@ -1,6 +1,6 @@
 {
   "schema": "emcore.q1-request.v1",
-  "mode": "IDLE",
+  "mode": "QUALIFY",
   "source_repository": "emcore-project/emcore",
   "source_commit": "f57337c622d533a0200e51fcdf798deae5130754",
   "source_tree": "cd36bfbf4dc333b8d144b847ab13e169e183eae9",
