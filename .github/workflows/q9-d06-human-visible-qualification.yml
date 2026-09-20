@@ -29,8 +29,8 @@ jobs:
             schema: 'emcore.q9-d06-human-visible.v1',
             mode: 'QUALIFY',
             source_repository: 'emcore-project/emcore',
-            source_commit: 'b7e8741bc76e3323990272028ba76468d6ccfe6a',
-            source_tree: '0ea2d6144af6d348e4160eef19e0ad38b5f9cc7a',
+            source_commit: 'eb8aa027a719e5ab764d43f7436657e9116380ba',
+            source_tree: '07996d33ab763c8040b31f715784dc653de6c489',
             provider_access_authorized: false,
             deployment_authorized: false,
             customer_data_authorized: false
@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: b7e8741bc76e3323990272028ba76468d6ccfe6a
+          ref: eb8aa027a719e5ab764d43f7436657e9116380ba
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -53,8 +53,8 @@ jobs:
       - name: Verify exact source identity
         working-directory: source
         run: |
-          test "$(git rev-parse HEAD)" = "b7e8741bc76e3323990272028ba76468d6ccfe6a"
-          test "$(git rev-parse 'HEAD^{tree}')" = "0ea2d6144af6d348e4160eef19e0ad38b5f9cc7a"
+          test "$(git rev-parse HEAD)" = "eb8aa027a719e5ab764d43f7436657e9116380ba"
+          test "$(git rev-parse 'HEAD^{tree}')" = "07996d33ab763c8040b31f715784dc653de6c489"
 
       - name: Set up Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
