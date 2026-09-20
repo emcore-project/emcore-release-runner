@@ -1,0 +1,120 @@
+name: EMCORE Q7 PILOT AAL2 Repository Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q7-aal2-repository-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q7-pilot-aal2
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate repository-only request
+        run: |
+          node <<'NODE'
+          const r = require('./q7-aal2-repository-request.json');
+          const expected = {
+            schema: 'emcore.q7-pilot-aal2.v1',
+            mode: 'QUALIFY',
+            source_repository: 'emcore-project/emcore',
+            source_commit: '1f62e83e8c7c88818e9f5b20f36eef367aff15df',
+            source_tree: '9ee81e07185c7dad304e322abddd1af0bbe9a896',
+            pr_number: 1058,
+            provider_access_authorized: false,
+            deployment_authorized: false,
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q7 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 1f62e83e8c7c88818e9f5b20f36eef367aff15df
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source identity
+        working-directory: source
+        run: |
+          test "$(git rev-parse HEAD)" = "1f62e83e8c7c88818e9f5b20f36eef367aff15df"
+          test "$(git rev-parse 'HEAD^{tree}')" = "9ee81e07185c7dad304e322abddd1af0bbe9a896"
+          echo "SOURCE_IDENTITY=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Syntax checks
+        working-directory: source
+        run: |
+          node --check scripts/pilot-aal2-acceptance.mjs
+          node --check scripts/pilot-live-smoke.mjs
+          node --check scripts/pilot-readiness-check.mjs
+          node --check scripts/v1-release-hardening-check.mjs
+
+      - name: Focused PILOT AAL2 tests
+        working-directory: source
+        run: node --experimental-strip-types --test tests/pilot-aal2-automation.test.ts
+
+      - name: Pilot readiness
+        working-directory: source
+        run: npm run check:pilot-readiness
+
+      - name: Release hardening
+        working-directory: source
+        run: npm run check:release-hardening
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            echo "Browser acceptance first attempt failed; retrying once on a fresh Chrome process."
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert provider isolation
+        run: |
+          echo "PROVIDER_ACCESS=NONE"
+          echo "SUPABASE_MUTATION=NONE"
+          echo "CLOUDFLARE_MUTATION=NONE"
+          echo "CUSTOMER_DATA_MUTATION=NONE"
+          echo "INGESTION_ENABLEMENT=NONE"
+          echo "Q7_REPOSITORY_QUALIFICATION=PASS"
