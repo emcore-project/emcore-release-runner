@@ -1,0 +1,22 @@
+{
+  "schema": "emcore.q25-d06-power-supply-availability-open-reference.v1",
+  "mode": "QUALIFY",
+  "mission": "CC26-D06-GOVERNED-POWER-SUPPLY-AVAILABILITY-OPEN-REFERENCE-V1-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "805854ece3e462387ad10e7db04129582e53fb94",
+  "source_baseline": "b44ee9933705754f34c47c883acfca7769c425a8",
+  "live_open_source_access_authorized": false,
+  "proprietary_market_access_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "customer_data_authorized": false,
+  "customer_ingestion_authorized": false,
+  "deployment_authorized": false,
+  "automatic_runtime_fetching_authorized": false,
+  "market_benchmark_ingestion_authorized": false,
+  "restricted_training_calibration_authorized": false,
+  "price_fair_value_engine_authorized": false,
+  "final_scenario_auto_execution_authorized": false,
+  "fixing_execution_authorized": false,
+  "trading_execution_authorized": false
+}
