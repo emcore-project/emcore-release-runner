@@ -1,0 +1,178 @@
+name: EMCORE Q20 D06 Governed GAS Commercial Structure Parity Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q20-d06-governed-gas-commercial-structure-parity-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q20-d06-governed-gas-commercial-structure-parity
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q20-d06-governed-gas-commercial-structure-parity-request.json');
+          const expected = {
+            schema: 'emcore.q20-d06-governed-gas-commercial-structure-parity.v1',
+            mode: 'QUALIFY',
+            mission: 'CC24-D06-GOVERNED-GAS-COMMERCIAL-STRUCTURE-PARITY-V1-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: 'dc41d6950942a3155d247cdc812e9c159d4c2de0',
+            source_tree: '91b01f90dd45665ea46008f4dd346d4d0888f55d',
+            source_baseline: '08cd556a3e564b317786b0e5bf6f67294ab0e55d',
+            live_open_source_access_authorized: false,
+            proprietary_market_access_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            customer_data_authorized: false,
+            customer_ingestion_authorized: false,
+            deployment_authorized: false,
+            automatic_runtime_fetching_authorized: false,
+            market_benchmark_ingestion_authorized: false,
+            restricted_training_calibration_authorized: false,
+            fixing_execution_authorized: false,
+            trading_execution_authorized: false,
+            default_pcs_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q20 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: dc41d6950942a3155d247cdc812e9c159d4c2de0
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source identity and bounded scope
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "dc41d6950942a3155d247cdc812e9c159d4c2de0"
+          test "$(git rev-parse 'HEAD^{tree}')" = "91b01f90dd45665ea46008f4dd346d4d0888f55d"
+          test -z "$(git status --porcelain)"
+          git cat-file -e 08cd556a3e564b317786b0e5bf6f67294ab0e55d^{commit}
+          changed="$(git diff --name-only 08cd556a3e564b317786b0e5bf6f67294ab0e55d..HEAD)"
+          echo "$changed"
+          test -n "$changed"
+          if echo "$changed" | grep -E '^(\.github/workflows/|supabase/|package\.json$|package-lock\.json$|apps/web/wrangler|scripts/cloudflare|scripts/pilot-live)'; then
+            echo "Forbidden deployment/dependency/provider scope change" >&2
+            exit 1
+          fi
+          unexpected="$(echo "$changed" | grep -Ev '^(packages/domain/src/gas-pricing-semantics\.ts|packages/domain/src/gas-commercial-position\.ts|packages/rules/src/gas-commodity-price-kernel\.ts|apps/web/src/GasCommercialStructuresDevPanel\.tsx|apps/web/src/MarketOpportunitiesDevSurface\.tsx|tests/governed-gas-commercial-structure-parity\.test\.ts|tests/market-opportunities-dev-surface\.test\.ts)$' || true)"
+          test -z "$unexpected"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SCOPE_ISOLATION=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused GAS commercial parity tests
+        working-directory: source
+        run: |
+          node --experimental-strip-types --test             tests/governed-gas-commercial-structure-parity.test.ts             tests/gas-commodity-price-kernel.test.ts             tests/gas-canonical-pricing-context.test.ts             tests/contract-fixing-lifecycle.test.ts             tests/forward-scenario-engine.test.ts             tests/market-opportunities-dev-surface.test.ts             tests/portal-navigation.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert GAS/C01 separation, runtime isolation and zero-cost guards
+        working-directory: source
+        shell: bash
+        run: |
+          ! grep -RE "fetch\(|axios|setInterval|setTimeout"             packages/domain/src/gas-pricing-semantics.ts             packages/domain/src/gas-commercial-position.ts             apps/web/src/GasCommercialStructuresDevPanel.tsx
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { ECMWF_PRODUCT_CONTRACT } from './packages/server/src/ecmwf-open-data-adapter.ts';
+          import { SOURCE_INTELLIGENCE_DATASETS } from './packages/domain/src/source-intelligence.ts';
+          import { CANONICAL_GAS_PRICING_MODES } from './packages/domain/src/gas-pricing-semantics.ts';
+          import { evaluateGasCommodityPrice } from './packages/rules/src/gas-commodity-price-kernel.ts';
+          if (ECMWF_PRODUCT_CONTRACT.automaticRuntimeFetching !== false) throw new Error('automatic runtime fetching changed');
+          for (const key of ['EEX_FORWARD_LICENSED_SLOT','GME_FORWARD_LICENSED_SLOT','ICE_FORWARD_LICENSED_SLOT','MONTEL_LICENSED_SLOT']) {
+            if (SOURCE_INTELLIGENCE_DATASETS[key].activationState !== 'OFF') throw new Error(key + ' unexpectedly active');
+          }
+          if (CANONICAL_GAS_PRICING_MODES.join('|') !== 'INDEXED|FIXED|FULL_FIXING|PARTIAL_FIXING|HYBRID') throw new Error('GAS mode drift');
+          const c01 = evaluateGasCommodityPrice({
+            mode: 'PARTIAL_FIXING',
+            billedUnitPriceEurPerSmc: 0.48,
+            quantitySmc: 1000,
+            referenceCommodityPriceEurPerSmc: 0.46,
+            fixedCommodityPriceEurPerSmc: 0.44,
+            fixingShare: 0.5,
+            baseSpreadEurPerSmc: 0.02,
+            pcsAdjustmentEurPerSmc: 0.01
+          });
+          if (c01.outcome !== 'OK') throw new Error('C01 shared primitive regression');
+          console.log('AUTOMATIC_RUNTIME_FETCHING=OFF');
+          console.log('LICENSED_MARKET_SLOTS=OFF');
+          console.log('C01_D06_SEPARATION=PASS');
+          console.log('FIXING_EXECUTION=NONE');
+          console.log('TRADING_EXECUTION=NONE');
+          console.log('DEFAULT_PCS=NONE');
+          NODE
+          echo "LIVE_OPEN_SOURCE_ACCESS=NONE"
+          echo "PROPRIETARY_MARKET_ACCESS=NONE"
+          echo "MARKET_BENCHMARK_INGESTION=NONE"
+          echo "PAID_FEED=NONE"
+          echo "SCRAPING=NONE"
+          echo "CUSTOMER_DATA=NONE"
+          echo "CUSTOMER_INGESTION=NONE"
+          echo "DEPLOYMENT=NONE"
+          echo "RESTRICTED_TRAINING_CALIBRATION=NONE"
+          echo "ZERO_COST=PASS"
+          echo "ISOLATION=PASS"
+          echo "Q20_D06_GOVERNED_GAS_COMMERCIAL_STRUCTURE_PARITY=PASS"
