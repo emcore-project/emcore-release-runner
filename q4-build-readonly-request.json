@@ -1,0 +1,5 @@
+{
+  "schema": "emcore.q4-build-readonly.v1",
+  "mode": "INSPECT",
+  "deployment_authorized": false
+}

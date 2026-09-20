@@ -1,0 +1,62 @@
+name: EMCORE Deployment Identity Build Read-Only
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q4-build-readonly-request.json
+      - .github/workflows/q4-deployment-identity-build-readonly.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Validate request
+        run: |
+          node -e 'const r=require("./q4-build-readonly-request.json"); if(r.mode!=="INSPECT"||r.deployment_authorized!==false) process.exit(1)'
+      - name: Checkout exact source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: f57337c622d533a0200e51fcdf798deae5130754
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify source identity
+        working-directory: source
+        run: |
+          test "$(git rev-parse HEAD)" = "f57337c622d533a0200e51fcdf798deae5130754"
+          test "$(git rev-parse 'HEAD^{tree}')" = "cd36bfbf4dc333b8d144b847ab13e169e183eae9"
+          echo SOURCE_IDENTITY=PASS
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Rebuild exact release identity
+        working-directory: source
+        env:
+          EMCORE_DEPLOYMENT_COMMIT_SHA: f57337c622d533a0200e51fcdf798deae5130754
+        run: npm run build --workspace @emcore/web
+      - name: Inspect generated dist without publishing artifacts
+        working-directory: source
+        shell: bash
+        run: |
+          sha_count="$(grep -RIl --exclude='*.map' 'f57337c622d533a0200e51fcdf798deae5130754' apps/web/dist 2>/dev/null | wc -l | tr -d ' ')"
+          identity_count="$(grep -RIl --exclude='*.map' 'DEPLOYMENT_IDENTITY_UNAVAILABLE' apps/web/dist 2>/dev/null | wc -l | tr -d ' ')"
+          echo "DIST_RELEASE_SHA_FILE_COUNT=$sha_count"
+          echo "DIST_IDENTITY_MARKER_FILE_COUNT=$identity_count"
+          test "$sha_count" -gt 0
+          test "$identity_count" -gt 0
+          echo "BUILD_IDENTITY_INJECTION=PASS"
+          echo "PROVIDER_ACCESS=NONE"
+          echo "DEPLOYMENT_ATTEMPT=NONE"
