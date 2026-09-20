@@ -1,0 +1,10 @@
+{
+  "schema": "emcore.q9-d06-human-visible.v1",
+  "mode": "QUALIFY",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "6f6c3bf6a36800a230946e404dcd104cf5309b8d",
+  "source_tree": "b9fa34a3d50c28748b2b41cab4d3dca225b23d84",
+  "provider_access_authorized": false,
+  "deployment_authorized": false,
+  "customer_data_authorized": false
+}
