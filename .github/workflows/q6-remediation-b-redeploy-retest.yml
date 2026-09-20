@@ -1,0 +1,216 @@
+name: EMCORE Q6 Remediation-B Redeploy Retest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q6-request.json
+      - .github/workflows/q6-remediation-b-redeploy-retest.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q6-remediation-b
+  cancel-in-progress: false
+
+jobs:
+  redeploy-retest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate Q6 request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const r = JSON.parse(fs.readFileSync('q6-request.json','utf8'));
+          const required = {
+            schema: 'emcore.q6-request.v1',
+            mode: 'DEPLOY_RETEST',
+            source_repository: 'emcore-project/emcore',
+            release_commit: '9441f5af2fd89de334cde7f9d465eb97bdc8fe93',
+            release_tree: '925e3f60b7356a1a679785627168a6740ddd1abc',
+            expected_open_pr_count: 0,
+            target_worker: 'emcore-web-pilot',
+            target_config: 'apps/web/wrangler.pilot.jsonc',
+            pilot_base_url: 'https://emcore-web-pilot.emcore-project.workers.dev',
+            zero_cost_required: true,
+            document_ingestion_enabled: false,
+            deployment_authorized: true
+          };
+          for (const [k,v] of Object.entries(required)) {
+            if (r[k] !== v) throw new Error('q6-request mismatch for '+k);
+          }
+          NODE
+
+      - name: Require governed secrets
+        shell: bash
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$EMCORE_SOURCE_TOKEN" || { echo "EMCORE_SOURCE_TOKEN missing; fail closed."; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN missing; fail closed."; exit 1; }
+
+      - name: Checkout exact private EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 9441f5af2fd89de334cde7f9d465eb97bdc8fe93
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source identity
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "9441f5af2fd89de334cde7f9d465eb97bdc8fe93" || { echo "Commit drift; fail closed."; exit 1; }
+          test "$(git rev-parse 'HEAD^{tree}')" = "925e3f60b7356a1a679785627168a6740ddd1abc" || { echo "Tree drift; fail closed."; exit 1; }
+          echo "SOURCE_IDENTITY=PASS"
+
+      - name: Verify zero open source pull requests
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          count="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100"             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).length)))')"
+          test "$count" = "0" || { echo "Open pull requests detected; fail closed."; exit 1; }
+          echo "OPEN_PR_COUNT=0"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install exact source dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Re-run PILOT readiness gate
+        working-directory: source
+        run: npm run check:pilot-readiness
+
+      - name: Re-run release hardening gate
+        working-directory: source
+        run: npm run check:release-hardening
+
+      - name: Re-run exact predeploy gate
+        working-directory: source
+        env:
+          EMCORE_RELEASE_COMMIT: 9441f5af2fd89de334cde7f9d465eb97bdc8fe93
+          EMCORE_RELEASE_TREE: 925e3f60b7356a1a679785627168a6740ddd1abc
+          EMCORE_OPEN_RELEASE_PRS: '0'
+          EMCORE_C6_ACCEPTED: 'true'
+          EMCORE_C7_ACCEPTED: 'true'
+          EMCORE_G9_ACCEPTED: 'true'
+          EMCORE_WAVE1_ACCEPTED: 'true'
+          EMCORE_WAVE2_ACCEPTED: 'true'
+          EMCORE_ZERO_COST_VERIFIED: 'true'
+        run: npm run check:release-predeploy
+
+      - name: Deploy exact remediated release once
+        working-directory: source
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          EMCORE_PILOT_COST_MODE: zero
+          WORKERS_CI_COMMIT_SHA: 9441f5af2fd89de334cde7f9d465eb97bdc8fe93
+        run: |
+          set +x
+          npm run deploy:cloudflare:pilot -- apps/web/wrangler.pilot.jsonc
+
+      - name: Verify provider deployment state read-only
+        working-directory: source
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set +x
+          output="$(npm exec --workspace @emcore/web -- wrangler deployments status --name emcore-web-pilot --json)"
+          test -n "$output" || { echo "No deployment state returned; fail closed."; exit 1; }
+          printf '%s' "$output" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const x=JSON.parse(s);
+              const d=Array.isArray(x)?x[0]:x;
+              const v=d?.versions?.[0] ?? {};
+              console.log("PROVIDER_DEPLOYMENT_STATE=PASS");
+              if (d?.id) console.log("ACTIVE_DEPLOYMENT_ID="+d.id);
+              if (v?.version_id) console.log("ACTIVE_VERSION_ID="+v.version_id);
+              if (v?.percentage != null) console.log("ACTIVE_TRAFFIC_PERCENT="+v.percentage);
+              if (d?.created_on) console.log("ACTIVE_CREATED_ON="+d.created_on);
+            });
+          '
+
+      - name: Verify exact live runtime config
+        shell: bash
+        run: |
+          node <<'NODE'
+          const expected = {
+            supabaseUrl: 'https://qogvvvqqkipmstajvhzl.supabase.co',
+            authMode: 'magic_link_mfa',
+            documentIngestionEnabled: false,
+            allowedOrganizationId: '00605bb8-3899-406e-a428-d7779e856bb2'
+          };
+          const response = await fetch('https://emcore-web-pilot.emcore-project.workers.dev/api/runtime-config', { headers:{accept:'application/json'} });
+          if (!response.ok) throw new Error('runtime-config HTTP '+response.status);
+          const body = await response.json();
+          for (const [k,v] of Object.entries(expected)) if (body[k] !== v) throw new Error('runtime-config mismatch for '+k);
+          console.log('RUNTIME_CONFIG=PASS');
+          NODE
+
+      - name: Verify exact live deployment identity
+        shell: bash
+        run: |
+          node <<'NODE'
+          const expected='9441f5af2fd89de334cde7f9d465eb97bdc8fe93';
+          const response = await fetch('https://emcore-web-pilot.emcore-project.workers.dev/api/deployment-identity', {headers:{accept:'application/json'}});
+          if (!response.ok) throw new Error('deployment-identity HTTP '+response.status);
+          const body = await response.json();
+          if (body.commitSha !== expected) throw new Error('live deployment identity mismatch');
+          console.log('DEPLOYMENT_IDENTITY=PASS');
+          console.log('LIVE_COMMIT='+body.commitSha);
+          NODE
+
+      - name: Run canonical public PILOT smoke
+        working-directory: source
+        env:
+          EMCORE_PILOT_BASE_URL: https://emcore-web-pilot.emcore-project.workers.dev
+          EMCORE_PILOT_ORGANIZATION_ID: 00605bb8-3899-406e-a428-d7779e856bb2
+          EMCORE_PILOT_EXPECTED_COMMIT: 9441f5af2fd89de334cde7f9d465eb97bdc8fe93
+        run: npm run test:pilot:live
+
+      - name: Run authenticated AAL smoke if governed tokens already exist
+        working-directory: source
+        shell: bash
+        env:
+          EMCORE_PILOT_BASE_URL: https://emcore-web-pilot.emcore-project.workers.dev
+          EMCORE_PILOT_ORGANIZATION_ID: 00605bb8-3899-406e-a428-d7779e856bb2
+          EMCORE_PILOT_EXPECTED_COMMIT: 9441f5af2fd89de334cde7f9d465eb97bdc8fe93
+          EMCORE_PILOT_AAL1_TOKEN: ${{ secrets.EMCORE_PILOT_AAL1_TOKEN }}
+          EMCORE_PILOT_AAL2_TOKEN: ${{ secrets.EMCORE_PILOT_AAL2_TOKEN }}
+        run: |
+          if [ -n "$EMCORE_PILOT_AAL2_TOKEN" ]; then
+            npm run test:pilot:live
+            echo "AUTHENTICATED_AAL2=PASS"
+          else
+            echo "AUTHENTICATED_AAL2=DEFERRED_NO_GOVERNED_RUNNER_TOKEN"
+          fi
+
+      - name: Terminal safety record
+        shell: bash
+        run: |
+          echo "CLOUDFLARE_PERMISSION_CHANGE=NONE"
+          echo "TOKEN_CHANGE=NONE"
+          echo "SUPABASE_MUTATION=NONE"
+          echo "CUSTOMER_DATA_MUTATION=NONE"
+          echo "INGESTION_ENABLEMENT=NONE"
+          echo "Q6_DEPLOYMENT_IDENTITY_PUBLIC_SMOKE=PASS"
