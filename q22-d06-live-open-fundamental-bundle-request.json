@@ -1,0 +1,22 @@
+{
+  "schema": "emcore.q22-d06-live-open-fundamental-bundle.v1",
+  "mode": "QUALIFY",
+  "mission": "CC25-D06-GOVERNED-LIVE-OPEN-FUNDAMENTAL-BUNDLE-V1-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "fb4e764deb9693d66d24c348e42eb33cd4b7e154",
+  "source_tree": "f7392a8764b3857dcb4d1c6e41fcc24d364115d0",
+  "source_baseline": "0d5b19c149bb16121017db6d1239b6ff4bb8f684",
+  "live_open_source_access_authorized": false,
+  "proprietary_market_access_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "customer_data_authorized": false,
+  "customer_ingestion_authorized": false,
+  "deployment_authorized": false,
+  "automatic_runtime_fetching_authorized": false,
+  "market_benchmark_ingestion_authorized": false,
+  "restricted_training_calibration_authorized": false,
+  "price_fair_value_engine_authorized": false,
+  "fixing_execution_authorized": false,
+  "trading_execution_authorized": false
+}
