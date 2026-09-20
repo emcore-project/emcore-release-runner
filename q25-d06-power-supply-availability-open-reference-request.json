@@ -3,7 +3,7 @@
   "mode": "QUALIFY",
   "mission": "CC26-D06-GOVERNED-POWER-SUPPLY-AVAILABILITY-OPEN-REFERENCE-V1-001",
   "source_repository": "emcore-project/emcore",
-  "source_commit": "805854ece3e462387ad10e7db04129582e53fb94",
+  "source_commit": "6ab15a1c11ee4e716a38af79afe6324702801ecb",
   "source_baseline": "b44ee9933705754f34c47c883acfca7769c425a8",
   "live_open_source_access_authorized": false,
   "proprietary_market_access_authorized": false,
