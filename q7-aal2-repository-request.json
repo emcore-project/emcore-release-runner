@@ -1,0 +1,10 @@
+{
+  "schema": "emcore.q7-pilot-aal2.v1",
+  "mode": "QUALIFY",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "1f62e83e8c7c88818e9f5b20f36eef367aff15df",
+  "source_tree": "9ee81e07185c7dad304e322abddd1af0bbe9a896",
+  "pr_number": 1058,
+  "provider_access_authorized": false,
+  "deployment_authorized": false
+}
