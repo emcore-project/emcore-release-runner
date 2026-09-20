@@ -1,0 +1,7 @@
+{
+  "schema": "emcore.q18-postmerge-identity.v1",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "1120373799b84b85bc4eabe1b41f344ee8f816da",
+  "source_tree": "06d9af91885527a452d659e3795508b1c7c0478a",
+  "deployment_authorized": false
+}
