@@ -1,0 +1,11 @@
+{
+  "schema": "emcore.q10-d06-governed-market-snapshot.v1",
+  "mode": "QUALIFY",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "3e9cbd5152c80272516e7d99d0ebf44131b70b03",
+  "source_tree": "4b0000335af23ade037ffece9b02590e8f7ff396",
+  "live_market_access_authorized": false,
+  "provider_mutation_authorized": false,
+  "deployment_authorized": false,
+  "customer_data_authorized": false
+}
