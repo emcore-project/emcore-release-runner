@@ -31,8 +31,8 @@ jobs:
             mode: 'QUALIFY',
             mission: 'CC25-D06-GOVERNED-FUNDAMENTAL-MARKET-CONSISTENCY-BRIDGE-V1-001',
             source_repository: 'emcore-project/emcore',
-            source_commit: '23ee641ef67efc7d2cd456941f74ce9038b4b94c',
-            source_tree: 'c87de060e1b89f8941cabce7b2e6ebecc6daf919',
+            source_commit: 'a2fa190877b7d676a5d4b6bb5c140d60b14da9cd',
+            source_tree: '9b66c7ebf14a50f11599ba96f686422f598426c7',
             source_baseline: 'b27cbc72ff9560f86c96be4e960ac0c89f64ca4f',
             live_open_source_access_authorized: false,
             proprietary_market_access_authorized: false,
@@ -57,7 +57,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 23ee641ef67efc7d2cd456941f74ce9038b4b94c
+          ref: a2fa190877b7d676a5d4b6bb5c140d60b14da9cd
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -67,8 +67,8 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "23ee641ef67efc7d2cd456941f74ce9038b4b94c"
-          test "$(git rev-parse 'HEAD^{tree}')" = "c87de060e1b89f8941cabce7b2e6ebecc6daf919"
+          test "$(git rev-parse HEAD)" = "a2fa190877b7d676a5d4b6bb5c140d60b14da9cd"
+          test "$(git rev-parse 'HEAD^{tree}')" = "9b66c7ebf14a50f11599ba96f686422f598426c7"
           test -z "$(git status --porcelain)"
           git cat-file -e b27cbc72ff9560f86c96be4e960ac0c89f64ca4f^{commit}
           changed="$(git diff --name-only b27cbc72ff9560f86c96be4e960ac0c89f64ca4f..HEAD)"
