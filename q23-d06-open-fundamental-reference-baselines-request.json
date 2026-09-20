@@ -1,0 +1,22 @@
+{
+  "schema": "emcore.q23-d06-open-fundamental-reference-baselines.v1",
+  "mode": "QUALIFY",
+  "mission": "CC25-D06-GOVERNED-OPEN-FUNDAMENTAL-REFERENCE-BASELINES-V1-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "0d5e8aaa09a856880c7de3c1d197ffe350514f7b",
+  "source_tree": "a110c98b82a89c8de0f8702707730e1b3f17cea6",
+  "source_baseline": "79ab380d9d7d3195f50f9ef6b1d2f79af0480dd6",
+  "live_open_source_access_authorized": false,
+  "proprietary_market_access_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "customer_data_authorized": false,
+  "customer_ingestion_authorized": false,
+  "deployment_authorized": false,
+  "automatic_runtime_fetching_authorized": false,
+  "market_benchmark_ingestion_authorized": false,
+  "restricted_training_calibration_authorized": false,
+  "price_fair_value_engine_authorized": false,
+  "fixing_execution_authorized": false,
+  "trading_execution_authorized": false
+}
