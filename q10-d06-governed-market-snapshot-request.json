@@ -7,5 +7,6 @@
   "live_market_access_authorized": false,
   "provider_mutation_authorized": false,
   "deployment_authorized": false,
-  "customer_data_authorized": false
+  "customer_data_authorized": false,
+  "qualification_attempt": 2
 }
