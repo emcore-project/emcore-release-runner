@@ -3,7 +3,7 @@
   "mode": "QUALIFY",
   "mission": "CC25-D06-GOVERNED-HISTORICAL-OPEN-FUNDAMENTAL-REFERENCE-BUNDLE-V1-001",
   "source_repository": "emcore-project/emcore",
-  "source_commit": "80adb33372c088ee3fbb6d29cfce7251f48657c0",
+  "source_commit": "a2dd9988b1d463e858e66ea7c8c8a659289ed9b2",
   "source_baseline": "5c26879937bc17331bd505e6720691600898b630",
   "live_open_source_access_authorized": false,
   "proprietary_market_access_authorized": false,
