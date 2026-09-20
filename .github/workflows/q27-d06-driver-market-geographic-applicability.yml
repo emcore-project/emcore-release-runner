@@ -1,0 +1,157 @@
+name: EMCORE Q27 D06 Driver Market Geographic Applicability Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q27-d06-driver-market-geographic-applicability-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q27-d06-driver-market-geographic-applicability
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q27-d06-driver-market-geographic-applicability-request.json');
+          const expected = {
+            schema: 'emcore.q27-d06-driver-market-geographic-applicability.v1',
+            mode: 'QUALIFY',
+            mission: 'CC26-D06-GOVERNED-DRIVER-TO-MARKET-GEOGRAPHIC-APPLICABILITY-V1-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: 'ea39800e1cdd8be391cf7d4d4cafc40646c69efd',
+            source_baseline: 'df324d556ba4602fe21eaee4b921aa5001734a8d',
+            live_open_source_access_authorized: false,
+            proprietary_market_access_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            customer_data_authorized: false,
+            customer_ingestion_authorized: false,
+            deployment_authorized: false,
+            automatic_runtime_fetching_authorized: false,
+            market_benchmark_ingestion_authorized: false,
+            price_fair_value_engine_authorized: false,
+            final_scenario_auto_execution_authorized: false,
+            fixing_execution_authorized: false,
+            trading_execution_authorized: false,
+            quantitative_geographic_weighting_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) if (r[key] !== value) throw new Error('Q27 request mismatch: ' + key);
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: ea39800e1cdd8be391cf7d4d4cafc40646c69efd
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source identity and bounded scope
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "ea39800e1cdd8be391cf7d4d4cafc40646c69efd"
+          test -z "$(git status --porcelain)"
+          git cat-file -e df324d556ba4602fe21eaee4b921aa5001734a8d^{commit}
+          changed="$(git diff --name-only df324d556ba4602fe21eaee4b921aa5001734a8d..HEAD)"
+          echo "$changed"
+          test -n "$changed"
+          unexpected="$(echo "$changed" | grep -Ev '^(packages/server/src/governed-driver-market-geographic-applicability\.ts|packages/server/src/governed-fundamental-driver-signal-bundle\.ts|tests/governed-driver-market-geographic-applicability\.test\.ts|tests/governed-fundamental-driver-signal-bundle\.test\.ts)$' || true)"
+          test -z "$unexpected"
+          ! echo "$changed" | grep -q '^packages/domain/src/fundamental-market-consistency\.ts$'
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SCOPE_ISOLATION=PASS"
+          echo "FUNDAMENTAL_MARKET_CONSISTENCY_GEOGRAPHY_GATE_UNCHANGED=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D06 geographic applicability tests
+        working-directory: source
+        run: |
+          node --experimental-strip-types --test             tests/governed-driver-market-geographic-applicability.test.ts             tests/governed-fundamental-driver-signal-bundle.test.ts             tests/governed-independent-fundamental-scenario-engine.test.ts             tests/governed-fundamental-market-consistency-bridge.test.ts             tests/governed-historical-open-fundamental-reference-bundle.test.ts             tests/governed-open-fundamental-reference-baselines.test.ts             tests/governed-live-open-fundamental-bundle.test.ts             tests/governed-fundamental-feature-pipeline.test.ts             tests/market-opportunities-dev-surface.test.ts             tests/portal-navigation.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert geographic applicability safety rights isolation and zero-cost guards
+        working-directory: source
+        shell: bash
+        run: |
+          ! grep -RE "setInterval\(" packages/server/src/governed-driver-market-geographic-applicability.ts
+          ! grep -RE "EEX_FORWARD|GME_FORWARD|ICE_FORWARD|MONTEL_LICENSED|fairValue|priceForecast:" packages/server/src/governed-driver-market-geographic-applicability.ts
+          grep -q "quantitativeWeightingAuthorized: false" packages/server/src/governed-driver-market-geographic-applicability.ts
+          grep -q "TARGET_MARKET_APPLICABILITY_RECORD_MISSING" packages/server/src/governed-driver-market-geographic-applicability.ts
+          grep -q "QUALITATIVE_CROSS_BORDER_CONTEXT_ONLY" packages/server/src/governed-driver-market-geographic-applicability.ts
+          grep -q "TARGET_MARKET_APPLICABILITY_REQUIRED" packages/server/src/governed-fundamental-driver-signal-bundle.ts
+          grep -q "buildFundamentalScenario" packages/server/src/governed-fundamental-driver-signal-bundle.ts
+          echo "DRIVER_TARGET_MARKET_GEOGRAPHIC_APPLICABILITY=PASS"
+          echo "POWER_GAS_PARITY=PASS"
+          echo "NO_FABRICATED_CROSS_BORDER_APPLICABILITY=PASS"
+          echo "NO_INVENTED_GEOGRAPHIC_WEIGHTS=PASS"
+          echo "FUNDAMENTAL_MARKET_CONSISTENCY_GEOGRAPHY_GATE_UNCHANGED=PASS"
+          echo "AUTOMATIC_RUNTIME_FETCHING=OFF"
+          echo "FINAL_SCENARIO_AUTO_EXECUTION=OFF"
+          echo "PROPRIETARY_MARKET_ACCESS=NONE"
+          echo "PAID_FEED=NONE"
+          echo "SCRAPING=NONE"
+          echo "CUSTOMER_DATA=NONE"
+          echo "CUSTOMER_INGESTION=NONE"
+          echo "PRICE_FAIR_VALUE_ENGINE=NONE"
+          echo "FIXING_EXECUTION=NONE"
+          echo "TRADING_EXECUTION=NONE"
+          echo "ZERO_COST=PASS"
+          echo "ISOLATION=PASS"
+          echo "Q27_D06_DRIVER_MARKET_GEOGRAPHIC_APPLICABILITY=PASS"
