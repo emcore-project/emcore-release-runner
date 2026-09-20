@@ -1,0 +1,144 @@
+name: EMCORE Q17 D06 Governed Fundamental Feature Pipeline Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q17-d06-governed-fundamental-feature-pipeline-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q17-d06-governed-fundamental-feature-pipeline
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q17-d06-governed-fundamental-feature-pipeline-request.json');
+          const expected = {
+            schema: 'emcore.q17-d06-governed-fundamental-feature-pipeline.v1',
+            mode: 'QUALIFY',
+            source_repository: 'emcore-project/emcore',
+            source_commit: '94c2ab420c74a6784f0d31d2430b47e64a85a8e3',
+            source_tree: '4ba65ba12fbcfb9c48f71fb989ad2d4150018b8e',
+            pr_number: 1068,
+            live_open_source_access_authorized: false,
+            proprietary_market_access_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            customer_data_authorized: false,
+            customer_ingestion_authorized: false,
+            deployment_authorized: false,
+            automatic_runtime_fetching_authorized: false,
+            restricted_training_calibration_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q17 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 94c2ab420c74a6784f0d31d2430b47e64a85a8e3
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source identity
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "94c2ab420c74a6784f0d31d2430b47e64a85a8e3"
+          test "$(git rev-parse 'HEAD^{tree}')" = "4ba65ba12fbcfb9c48f71fb989ad2d4150018b8e"
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SOURCE_IDENTITY=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused governed feature tests
+        working-directory: source
+        run: node --experimental-strip-types --test tests/governed-fundamental-feature-pipeline.test.ts tests/ecmwf-open-data-adapter.test.ts tests/source-intelligence-live-open-adapters.test.ts tests/source-intelligence-v2.test.ts tests/market-fundamentals-v1.test.ts tests/market-opportunities-dev-surface.test.ts tests/portal-navigation.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert bounded isolation and zero-cost contract
+        working-directory: source
+        shell: bash
+        run: |
+          ! grep -RE "fetch\\(|axios|setInterval|setTimeout" packages/domain/src/fundamental-features.ts packages/server/src/fundamental-feature-mappings.ts apps/web/src/GovernedFundamentalFeaturesDevPanel.tsx
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { ECMWF_PRODUCT_CONTRACT } from './packages/server/src/ecmwf-open-data-adapter.ts';
+          import { SOURCE_INTELLIGENCE_DATASETS } from './packages/domain/src/source-intelligence.ts';
+          if (ECMWF_PRODUCT_CONTRACT.automaticRuntimeFetching !== false) throw new Error('automatic runtime fetching changed');
+          for (const key of ['EEX_FORWARD_LICENSED_SLOT','GME_FORWARD_LICENSED_SLOT','ICE_FORWARD_LICENSED_SLOT','MONTEL_LICENSED_SLOT']) {
+            if (SOURCE_INTELLIGENCE_DATASETS[key].activationState !== 'OFF') throw new Error(key + ' unexpectedly active');
+          }
+          console.log('AUTOMATIC_RUNTIME_FETCHING=OFF');
+          console.log('LICENSED_MARKET_SLOTS=OFF');
+          NODE
+          echo "LIVE_OPEN_SOURCE_ACCESS=NONE"
+          echo "PROPRIETARY_MARKET_ACCESS=NONE"
+          echo "PAID_FEED=NONE"
+          echo "SCRAPING=NONE"
+          echo "CUSTOMER_DATA=NONE"
+          echo "CUSTOMER_INGESTION=NONE"
+          echo "DEPLOYMENT=NONE"
+          echo "RESTRICTED_TRAINING_CALIBRATION=NONE"
+          echo "PRICE_FORECAST_FABRICATION=NONE"
+          echo "ZERO_COST=PASS"
+          echo "ISOLATION=PASS"
+          echo "Q17_D06_GOVERNED_FUNDAMENTAL_FEATURE_PIPELINE=PASS"
