@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - q18-d06-governed-model-evaluation-skill-request.json
+  pull_request:
+    branches: [main]
+    paths:
+      - q18-d06-governed-model-evaluation-skill-request.json
 
 permissions:
   contents: read
