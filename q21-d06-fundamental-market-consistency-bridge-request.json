@@ -1,0 +1,22 @@
+{
+  "schema": "emcore.q21-d06-fundamental-market-consistency-bridge.v1",
+  "mode": "QUALIFY",
+  "mission": "CC25-D06-GOVERNED-FUNDAMENTAL-MARKET-CONSISTENCY-BRIDGE-V1-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "23ee641ef67efc7d2cd456941f74ce9038b4b94c",
+  "source_tree": "c87de060e1b89f8941cabce7b2e6ebecc6daf919",
+  "source_baseline": "b27cbc72ff9560f86c96be4e960ac0c89f64ca4f",
+  "live_open_source_access_authorized": false,
+  "proprietary_market_access_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "customer_data_authorized": false,
+  "customer_ingestion_authorized": false,
+  "deployment_authorized": false,
+  "automatic_runtime_fetching_authorized": false,
+  "market_benchmark_ingestion_authorized": false,
+  "restricted_training_calibration_authorized": false,
+  "price_fair_value_engine_authorized": false,
+  "fixing_execution_authorized": false,
+  "trading_execution_authorized": false
+}
