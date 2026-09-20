@@ -30,7 +30,7 @@ jobs:
             schema: 'emcore.q16-d06-ecmwf-open-data-grib2.v1',
             mode: 'QUALIFY',
             source_repository: 'emcore-project/emcore',
-            source_commit: '0bd8c5c4e8dcf5830ecbe9a42003f61a8578c057',
+            source_commit: '024707504369913cd60268842174704855b2e3fc',
             pr_number: 1067,
             ecmwf_open_data_access_authorized: true,
             decoder_package: '@meri-imperiumi/eccodes-wasm',
@@ -53,7 +53,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 0bd8c5c4e8dcf5830ecbe9a42003f61a8578c057
+          ref: 024707504369913cd60268842174704855b2e3fc
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -63,7 +63,7 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "0bd8c5c4e8dcf5830ecbe9a42003f61a8578c057"
+          test "$(git rev-parse HEAD)" = "024707504369913cd60268842174704855b2e3fc"
           test -z "$(git status --porcelain)"
           echo "SOURCE_HEAD=$(git rev-parse HEAD)"
           echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
