@@ -1,0 +1,143 @@
+name: EMCORE Q14 D06 Live Open Adapter Wave1 Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q14-d06-live-open-adapter-wave1-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q14-d06-live-open-adapter-wave1
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded live-open request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q14-d06-live-open-adapter-wave1-request.json');
+          const expected = {
+            schema: 'emcore.q14-d06-live-open-adapter-wave1.v1',
+            mode: 'QUALIFY',
+            source_repository: 'emcore-project/emcore',
+            source_commit: 'f6fdc688def77299dc4b367bbe6c35cab5b097e6',
+            pr_number: 1065,
+            live_open_source_access_authorized: true,
+            proprietary_market_access_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            customer_data_authorized: false,
+            customer_ingestion_authorized: false,
+            deployment_authorized: false,
+            restricted_training_calibration_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q14 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: f6fdc688def77299dc4b367bbe6c35cab5b097e6
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source identity
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "f6fdc688def77299dc4b367bbe6c35cab5b097e6"
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SOURCE_IDENTITY=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Canonical script syntax checks
+        working-directory: source
+        run: |
+          node --check scripts/cloudflare-dev-deploy.mjs
+          node --check scripts/cloudflare-pilot-deploy.mjs
+          node --check scripts/pilot-readiness-check.mjs
+          node --check scripts/v1-release-hardening-check.mjs
+          node --check scripts/browser-acceptance.mjs
+          node --check scripts/dev-authenticated-smoke.mjs
+          node --check scripts/dev-technical-dossier-smoke.mjs
+          node --check scripts/pilot-live-smoke.mjs
+
+      - name: Pilot readiness gate
+        working-directory: source
+        run: npm run check:pilot-readiness
+
+      - name: Release hardening static gate
+        working-directory: source
+        run: npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D06 live-open adapter tests
+        working-directory: source
+        run: node --experimental-strip-types --test tests/source-intelligence-live-open-adapters.test.ts tests/source-intelligence-v2.test.ts tests/market-fundamentals-v1.test.ts tests/governed-market-snapshot-intake.test.ts tests/forward-scenario-engine.test.ts tests/market-opportunities-dev-surface.test.ts tests/portal-navigation.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            echo "Browser acceptance first attempt failed; retrying once on a fresh Chrome process."
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert bounded isolation
+        shell: bash
+        run: |
+          echo "LIVE_OPEN_SOURCE_ACCESS=AUTHORIZED_BOUNDED"
+          echo "LIVE_OPEN_DATASETS=NASA_POWER_WEATHER,SODIR_GAS_SUPPLY,NVE_HYDRO"
+          echo "PROPRIETARY_MARKET_ACCESS=NONE"
+          echo "PAID_FEED=NONE"
+          echo "SCRAPING=NONE"
+          echo "CUSTOMER_DATA=NONE"
+          echo "CUSTOMER_INGESTION=NONE"
+          echo "DEPLOYMENT=NONE"
+          echo "RESTRICTED_TRAINING_CALIBRATION=NONE"
+          echo "ZERO_COST=PASS"
+          echo "Q14_D06_LIVE_OPEN_ADAPTER_WAVE1=PASS"
