@@ -16,5 +16,5 @@
   "market_benchmark_ingestion_authorized": false,
   "restricted_training_calibration_authorized": false,
   "price_forecast_engine_authorized": false,
-  "request_revision": 3
+  "request_revision": 4
 }
