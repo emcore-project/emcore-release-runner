@@ -30,8 +30,8 @@ jobs:
             schema: 'emcore.q11-d17-d06-markets-ux.v1',
             mode: 'QUALIFY',
             source_repository: 'emcore-project/emcore',
-            source_commit: '7424ae247435e2fcb37684dfc4426b5e64d16d63',
-            source_tree: '91c0fee1a86a0ffada3e5deb339c238b73040f61',
+            source_commit: '664afea72a4137f1a72d299a65e0149e594b39b3',
+            source_tree: '33ddd072045a517402057d2970a9b5a32cef5c87',
             pr_number: 1062,
             live_market_access_authorized: false,
             provider_mutation_authorized: false,
@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 7424ae247435e2fcb37684dfc4426b5e64d16d63
+          ref: 664afea72a4137f1a72d299a65e0149e594b39b3
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -58,8 +58,8 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "7424ae247435e2fcb37684dfc4426b5e64d16d63"
-          test "$(git rev-parse 'HEAD^{tree}')" = "91c0fee1a86a0ffada3e5deb339c238b73040f61"
+          test "$(git rev-parse HEAD)" = "664afea72a4137f1a72d299a65e0149e594b39b3"
+          test "$(git rev-parse 'HEAD^{tree}')" = "33ddd072045a517402057d2970a9b5a32cef5c87"
           test -z "$(git status --porcelain)"
           echo "SOURCE_IDENTITY=PASS"
 
