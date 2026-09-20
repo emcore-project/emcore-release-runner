@@ -2,13 +2,13 @@
   "schema": "emcore.q11-d17-d06-markets-ux.v1",
   "mode": "QUALIFY",
   "source_repository": "emcore-project/emcore",
-  "source_commit": "664afea72a4137f1a72d299a65e0149e594b39b3",
-  "source_tree": "33ddd072045a517402057d2970a9b5a32cef5c87",
+  "source_commit": "3b246198b209c480405422bd8b66ef58f1dbeb69",
+  "source_tree": "47df7b8c8586712941ea9fad0ae698bd59fd2ca4",
   "pr_number": 1062,
   "live_market_access_authorized": false,
   "provider_mutation_authorized": false,
   "deployment_authorized": false,
   "customer_data_authorized": false,
   "ingestion_enablement_authorized": false,
-  "qualification_attempt": 4
+  "qualification_attempt": 5
 }
