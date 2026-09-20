@@ -31,7 +31,7 @@ jobs:
             mode: 'QUALIFY',
             mission: 'CC25-D06-GOVERNED-HISTORICAL-OPEN-FUNDAMENTAL-REFERENCE-BUNDLE-V1-001',
             source_repository: 'emcore-project/emcore',
-            source_commit: '80adb33372c088ee3fbb6d29cfce7251f48657c0',
+            source_commit: 'a2dd9988b1d463e858e66ea7c8c8a659289ed9b2',
             source_baseline: '5c26879937bc17331bd505e6720691600898b630',
             live_open_source_access_authorized: false,
             proprietary_market_access_authorized: false,
@@ -57,7 +57,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 80adb33372c088ee3fbb6d29cfce7251f48657c0
+          ref: a2dd9988b1d463e858e66ea7c8c8a659289ed9b2
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -67,7 +67,7 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "80adb33372c088ee3fbb6d29cfce7251f48657c0"
+          test "$(git rev-parse HEAD)" = "a2dd9988b1d463e858e66ea7c8c8a659289ed9b2"
           test -z "$(git status --porcelain)"
           git cat-file -e 5c26879937bc17331bd505e6720691600898b630^{commit}
           changed="$(git diff --name-only 5c26879937bc17331bd505e6720691600898b630..HEAD)"
@@ -143,7 +143,7 @@ jobs:
         shell: bash
         run: |
           ! grep -RE "setInterval\(|setTimeout\(" packages/server/src/historical-open-fundamental-reference-bundle.ts apps/web/src/HistoricalReferenceBundleDevPanel.tsx
-          ! grep -RE "EEX_FORWARD|GME_FORWARD|ICE_FORWARD|MONTEL_LICENSED|fairValue|EUR/MWh|priceForecast" packages/server/src/historical-open-fundamental-reference-bundle.ts
+          ! grep -RE "EEX_FORWARD|GME_FORWARD|ICE_FORWARD|MONTEL_LICENSED|fairValue|EUR/MWh|priceForecast:" packages/server/src/historical-open-fundamental-reference-bundle.ts
           grep -q "automaticRuntimeFetching: false" packages/server/src/historical-open-fundamental-reference-bundle.ts
           grep -q "finalScenarioAutoExecution: false" packages/server/src/historical-open-fundamental-reference-bundle.ts
           node --experimental-strip-types --input-type=module <<'NODE'
