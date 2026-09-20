@@ -1,0 +1,10 @@
+{
+  "schema": "emcore.q8-d06-forward.v1",
+  "mode": "QUALIFY",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "495bb31c196d629571b8e9c0999910eaa6a2b2f0",
+  "source_tree": "8df341c986445885ad319f3da161321acf3b987e",
+  "provider_access_authorized": false,
+  "customer_data_authorized": false,
+  "ingestion_authorized": false
+}
