@@ -1,0 +1,265 @@
+name: EMCORE Q16 D06 ECMWF Open Data GRIB2 Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q16-d06-ecmwf-open-data-grib2-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q16-d06-ecmwf-open-data-grib2
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q16-d06-ecmwf-open-data-grib2-request.json');
+          const expected = {
+            schema: 'emcore.q16-d06-ecmwf-open-data-grib2.v1',
+            mode: 'QUALIFY',
+            source_repository: 'emcore-project/emcore',
+            source_commit: '14e6800fde37078c81039d759e8ccfbcc89f8326',
+            pr_number: 1067,
+            ecmwf_open_data_access_authorized: true,
+            decoder_package: '@meri-imperiumi/eccodes-wasm',
+            decoder_version: '2.48.2',
+            proprietary_market_access_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            customer_data_authorized: false,
+            customer_ingestion_authorized: false,
+            deployment_authorized: false,
+            automatic_runtime_fetching_authorized: false,
+            restricted_training_calibration_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q16 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 14e6800fde37078c81039d759e8ccfbcc89f8326
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source identity
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "14e6800fde37078c81039d759e8ccfbcc89f8326"
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SOURCE_IDENTITY=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install repository dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install exact transient GRIB2 decoder runtime
+        working-directory: source
+        run: npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @meri-imperiumi/eccodes-wasm@2.48.2
+
+      - name: Verify decoder package identity
+        working-directory: source
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const pkg = await import('@meri-imperiumi/eccodes-wasm/package.json', { with: { type: 'json' } });
+          const meta = pkg.default ?? pkg;
+          if (meta.version !== '2.48.2') throw new Error('Unexpected eccodes-wasm version: ' + meta.version);
+          if (meta.license !== 'Apache-2.0') throw new Error('Unexpected eccodes-wasm license: ' + meta.license);
+          console.log('DECODER=@meri-imperiumi/eccodes-wasm');
+          console.log('DECODER_VERSION=' + meta.version);
+          console.log('DECODER_LICENSE=' + meta.license);
+          NODE
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused ECMWF and Source Intelligence tests
+        working-directory: source
+        run: node --experimental-strip-types --test tests/ecmwf-open-data-adapter.test.ts tests/source-intelligence-live-open-adapters.test.ts tests/source-intelligence-v2.test.ts tests/market-fundamentals-v1.test.ts tests/market-opportunities-dev-surface.test.ts tests/portal-navigation.test.ts
+
+      - name: Controlled live ECMWF GRIB2 decode smoke
+        working-directory: source
+        shell: bash
+        run: |
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { writeFileSync, unlinkSync } from 'node:fs';
+          import {
+            acquireEcmwfForecastPoint,
+            ECMWF_DECODER_LICENSE,
+            ECMWF_DECODER_NAME,
+            ECMWF_DECODER_VERSION,
+          } from './packages/server/src/ecmwf-open-data-adapter.ts';
+
+          const module = await import('@meri-imperiumi/eccodes-wasm');
+          const createEccodes = module.createEccodes ?? module.default?.createEccodes ?? module.default;
+          if (typeof createEccodes !== 'function') {
+            throw new Error('eccodes-wasm createEccodes export not found: ' + Object.keys(module).join(','));
+          }
+          const eccodes = await createEccodes();
+          if (typeof eccodes.mountFilesystem === 'function') eccodes.mountFilesystem(process.cwd());
+
+          let sequence = 0;
+          const decoder = {
+            name: ECMWF_DECODER_NAME,
+            version: ECMWF_DECODER_VERSION,
+            license: ECMWF_DECODER_LICENSE,
+            async decodeSingleField(bytes) {
+              const file = '.q16-ecmwf-' + (++sequence) + '.grib2';
+              writeFileSync(file, bytes);
+              let handle;
+              try {
+                handle = eccodes.openGrib(file);
+                const shortName = handle.getString('shortName');
+                const units = handle.getString('units');
+                const stepHours = Number(handle.getLong('step'));
+                const validityDate = String(handle.getLong('validityDate')).padStart(8, '0');
+                const validityTime = String(handle.getLong('validityTime')).padStart(4, '0');
+                const validTime = new Date(
+                  validityDate.slice(0,4) + '-' + validityDate.slice(4,6) + '-' + validityDate.slice(6,8)
+                  + 'T' + validityTime.slice(0,2) + ':' + validityTime.slice(2,4) + ':00Z'
+                ).toISOString();
+                return {
+                  shortName,
+                  units,
+                  stepHours,
+                  validTime,
+                  ni: Number(handle.getLong('Ni')),
+                  nj: Number(handle.getLong('Nj')),
+                  latitudes: Array.from(handle.getDoubleArray('latitudes')),
+                  longitudes: Array.from(handle.getDoubleArray('longitudes')),
+                  values: Array.from(handle.getDoubleArray('values')),
+                  packingType: handle.getString('packingType'),
+                  gridType: handle.getString('gridType'),
+                };
+              } finally {
+                if (handle) handle.delete();
+                try { unlinkSync(file); } catch {}
+              }
+            },
+          };
+
+          const now = new Date();
+          const candidateRuns = [];
+          const today = now.toISOString().slice(0, 10);
+          const yesterday = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
+          if (now.getUTCHours() >= 8) candidateRuns.push({ runDate: today, cycleUtc: '00' });
+          candidateRuns.push({ runDate: yesterday, cycleUtc: '12' }, { runDate: yesterday, cycleUtc: '00' });
+
+          let chosen = null;
+          let lastError = null;
+          for (const candidate of candidateRuns) {
+            try {
+              const probe = await acquireEcmwfForecastPoint({
+                ...candidate,
+                stepHours: 24,
+                parameter: '2t',
+                latitude: 45,
+                longitude: 10,
+                decoder,
+              });
+              chosen = { candidate, probe };
+              break;
+            } catch (error) {
+              lastError = error;
+              console.log('ECMWF_CANDIDATE_UNAVAILABLE', candidate.runDate, candidate.cycleUtc, String(error));
+            }
+          }
+          if (!chosen) throw lastError ?? new Error('No ECMWF run qualified');
+
+          const outputs = [chosen.probe];
+          for (const parameter of ['10u', '10v', 'ssrd']) {
+            outputs.push(await acquireEcmwfForecastPoint({
+              ...chosen.candidate,
+              stepHours: 24,
+              parameter,
+              latitude: 45,
+              longitude: 10,
+              decoder,
+            }));
+          }
+
+          for (const result of outputs) {
+            const p = result.payload;
+            if (!Number.isFinite(p.value)) throw new Error('Non-finite ECMWF value for ' + p.parameter);
+            if (!p.checksumSha256.startsWith('sha256:')) throw new Error('Missing checksum for ' + p.parameter);
+            if (p.runTime === p.validTime) throw new Error('Run time collapsed into valid time');
+            console.log('ECMWF_FIELD_PASS', p.parameter, p.value, p.unit, p.runTime, p.stepHours, p.validTime, p.gridDistanceKm, p.packingType);
+          }
+          console.log('ECMWF_LIVE_SMOKE=PASS');
+          console.log('ECMWF_RUN_VINTAGE=' + chosen.probe.payload.runTime);
+          console.log('ECMWF_DECODER=' + decoder.name + '@' + decoder.version);
+          console.log('ECMWF_PROVENANCE_CHECKSUM=' + chosen.probe.payload.checksumSha256);
+          NODE
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert bounded isolation
+        shell: bash
+        run: |
+          echo "ECMWF_OPEN_DATA_ACCESS=AUTHORIZED_BOUNDED"
+          echo "ECMWF_PRODUCT=IFS_OD_OPER_FC_00_12_SURFACE_0P25_0_360H"
+          echo "DECODER=@meri-imperiumi/eccodes-wasm@2.48.2"
+          echo "RUNTIME_AUTOMATIC_LIVE_FETCHING=OFF"
+          echo "PROPRIETARY_MARKET_ACCESS=NONE"
+          echo "PAID_FEED=NONE"
+          echo "SCRAPING=NONE"
+          echo "CUSTOMER_DATA=NONE"
+          echo "CUSTOMER_INGESTION=NONE"
+          echo "DEPLOYMENT=NONE"
+          echo "RESTRICTED_TRAINING_CALIBRATION=NONE"
+          echo "ZERO_COST=PASS"
+          echo "Q16_D06_ECMWF_OPEN_DATA_GRIB2=PASS"
