@@ -1,0 +1,18 @@
+{
+  "schema": "emcore.q18-d06-governed-model-evaluation-skill.v1",
+  "mode": "QUALIFY",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "10b99bddb4edb684a67b27b15bfdb8c56e55deed",
+  "pr_number": 1069,
+  "live_open_source_access_authorized": false,
+  "proprietary_market_access_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "customer_data_authorized": false,
+  "customer_ingestion_authorized": false,
+  "deployment_authorized": false,
+  "automatic_runtime_fetching_authorized": false,
+  "market_benchmark_ingestion_authorized": false,
+  "restricted_training_calibration_authorized": false,
+  "price_forecast_engine_authorized": false
+}
