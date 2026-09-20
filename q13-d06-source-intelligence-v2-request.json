@@ -1,0 +1,15 @@
+{
+  "schema": "emcore.q13-d06-source-intelligence-v2.v1",
+  "mode": "QUALIFY",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "2754648f9344d4fa8d26e3a960b78305929c15c6",
+  "pr_number": 1064,
+  "live_market_access_authorized": false,
+  "provider_mutation_authorized": false,
+  "deployment_authorized": false,
+  "customer_data_authorized": false,
+  "ingestion_enablement_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "restricted_training_calibration_authorized": false
+}
