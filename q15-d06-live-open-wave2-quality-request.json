@@ -1,0 +1,15 @@
+{
+  "schema": "emcore.q15-d06-live-open-wave2-quality.v1",
+  "mode": "QUALIFY",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "7d76be0e0a623bb4163c4538111c6f6fc1aeadb9",
+  "pr_number": 1066,
+  "live_open_source_access_authorized": true,
+  "proprietary_market_access_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "customer_data_authorized": false,
+  "customer_ingestion_authorized": false,
+  "deployment_authorized": false,
+  "restricted_training_calibration_authorized": false
+}
