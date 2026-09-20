@@ -1,0 +1,15 @@
+{
+  "schema": "emcore.q12-d06-open-market-fundamentals.v1",
+  "mode": "QUALIFY",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "94fa6cb00ad44bf7070130c83ae2444f946afe78",
+  "source_tree": "b7ae18ac5dfbcf9ee51728a433ce2cfbb90e2476",
+  "pr_number": 1063,
+  "live_market_access_authorized": false,
+  "provider_mutation_authorized": false,
+  "deployment_authorized": false,
+  "customer_data_authorized": false,
+  "ingestion_enablement_authorized": false,
+  "paid_feed_authorized": false,
+  "qualification_attempt": 1
+}
