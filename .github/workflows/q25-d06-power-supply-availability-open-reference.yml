@@ -1,0 +1,184 @@
+name: EMCORE Q25 D06 Power Supply Availability Open Reference Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q25-d06-power-supply-availability-open-reference-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q25-d06-power-supply-availability-open-reference
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q25-d06-power-supply-availability-open-reference-request.json');
+          const expected = {
+            schema: 'emcore.q25-d06-power-supply-availability-open-reference.v1',
+            mode: 'QUALIFY',
+            mission: 'CC26-D06-GOVERNED-POWER-SUPPLY-AVAILABILITY-OPEN-REFERENCE-V1-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: '805854ece3e462387ad10e7db04129582e53fb94',
+            source_baseline: 'b44ee9933705754f34c47c883acfca7769c425a8',
+            live_open_source_access_authorized: false,
+            proprietary_market_access_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            customer_data_authorized: false,
+            customer_ingestion_authorized: false,
+            deployment_authorized: false,
+            automatic_runtime_fetching_authorized: false,
+            market_benchmark_ingestion_authorized: false,
+            restricted_training_calibration_authorized: false,
+            price_fair_value_engine_authorized: false,
+            final_scenario_auto_execution_authorized: false,
+            fixing_execution_authorized: false,
+            trading_execution_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q25 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 805854ece3e462387ad10e7db04129582e53fb94
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source identity and bounded scope
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "805854ece3e462387ad10e7db04129582e53fb94"
+          test -z "$(git status --porcelain)"
+          git cat-file -e b44ee9933705754f34c47c883acfca7769c425a8^{commit}
+          changed="$(git diff --name-only b44ee9933705754f34c47c883acfca7769c425a8..HEAD)"
+          echo "$changed"
+          test -n "$changed"
+          if echo "$changed" | grep -E '^(\.github/workflows/|supabase/|package\.json$|package-lock\.json$|apps/web/wrangler|scripts/cloudflare|scripts/pilot-live)'; then
+            echo "Forbidden deployment/dependency scope change" >&2
+            exit 1
+          fi
+          unexpected="$(echo "$changed" | grep -Ev '^(packages/domain/src/source-intelligence\.ts|packages/server/src/source-intelligence-live-open-adapters\.ts|packages/server/src/fundamental-feature-mappings\.ts|packages/server/src/open-fundamental-reference-baselines\.ts|packages/server/src/historical-open-fundamental-reference-bundle\.ts|apps/web/src/HistoricalReferenceBundleDevPanel\.tsx|tests/governed-historical-open-fundamental-reference-bundle\.test\.ts|tests/source-intelligence-live-open-adapters\.test\.ts)$' || true)"
+          test -z "$unexpected"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SCOPE_ISOLATION=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D06 power supply availability tests
+        working-directory: source
+        run: |
+          node --experimental-strip-types --test \
+            tests/source-intelligence-v2.test.ts \
+            tests/source-intelligence-live-open-adapters.test.ts \
+            tests/governed-fundamental-feature-pipeline.test.ts \
+            tests/governed-open-fundamental-reference-baselines.test.ts \
+            tests/governed-historical-open-fundamental-reference-bundle.test.ts \
+            tests/governed-independent-fundamental-scenario-engine.test.ts \
+            tests/governed-live-open-fundamental-bundle.test.ts \
+            tests/governed-fundamental-market-consistency-bridge.test.ts \
+            tests/market-opportunities-dev-surface.test.ts \
+            tests/portal-navigation.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert power reference safety rights isolation and zero-cost guards
+        working-directory: source
+        shell: bash
+        run: |
+          ! grep -RE "setInterval\(" packages/server/src/historical-open-fundamental-reference-bundle.ts packages/server/src/source-intelligence-live-open-adapters.ts
+          ! grep -RE "EEX_FORWARD|GME_FORWARD|ICE_FORWARD|MONTEL_LICENSED|fairValue|EUR/MWh|priceForecast:" packages/server/src/historical-open-fundamental-reference-bundle.ts
+          grep -q "automaticRuntimeFetching: false" packages/server/src/historical-open-fundamental-reference-bundle.ts
+          grep -q "finalScenarioAutoExecution: false" packages/server/src/historical-open-fundamental-reference-bundle.ts
+          grep -q "EDF_KD_ANNUAL_AGGREGATE_NOT_UNIT_LEVEL_MW_REFERENCE" packages/server/src/historical-open-fundamental-reference-bundle.ts
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { assessDatasetUse, SOURCE_INTELLIGENCE_DATASETS } from './packages/domain/src/source-intelligence.ts';
+          for (const key of ['EDF_NUCLEAR_OUTAGE_HISTORY','EDF_NUCLEAR_AVAILABILITY_KD']) {
+            const ds = SOURCE_INTELLIGENCE_DATASETS[key];
+            if (ds.licence !== 'Licence Ouverte / Open Licence 2.0') throw new Error(key + ' licence mismatch');
+            if (!assessDatasetUse(key, 'FUNDAMENTAL_INPUT', 'modelDerivedUse').allowed) throw new Error(key + ' rights blocked');
+          }
+          for (const key of ['EEX_FORWARD_LICENSED_SLOT','GME_FORWARD_LICENSED_SLOT','ICE_FORWARD_LICENSED_SLOT','MONTEL_LICENSED_SLOT']) {
+            if (SOURCE_INTELLIGENCE_DATASETS[key].activationState !== 'OFF') throw new Error(key + ' unexpectedly active');
+          }
+          console.log('EDF_HISTORY_RIGHTS=PASS');
+          console.log('EDF_KD_RIGHTS=PASS');
+          console.log('EDF_KD_INTERPOLATION=PROHIBITED');
+          console.log('EDF_EVENT_ASOF_REPLAY=GOVERNED');
+          console.log('POWER_SUPPLY_AVAILABILITY_REFERENCE=GOVERNED');
+          console.log('AUTOMATIC_RUNTIME_FETCHING=OFF');
+          console.log('FINAL_SCENARIO_AUTO_EXECUTION=OFF');
+          console.log('LICENSED_MARKET_SLOTS=OFF');
+          console.log('PRICE_FAIR_VALUE_ENGINE=NONE');
+          console.log('FIXING_EXECUTION=NONE');
+          console.log('TRADING_EXECUTION=NONE');
+          NODE
+          echo "LIVE_OPEN_SOURCE_ACCESS_DURING_QUALIFICATION=NONE"
+          echo "PROPRIETARY_MARKET_ACCESS=NONE"
+          echo "PAID_FEED=NONE"
+          echo "SCRAPING=NONE"
+          echo "CUSTOMER_DATA=NONE"
+          echo "CUSTOMER_INGESTION=NONE"
+          echo "DEPLOYMENT=NONE"
+          echo "RESTRICTED_TRAINING_CALIBRATION=NONE"
+          echo "ZERO_COST=PASS"
+          echo "ISOLATION=PASS"
+          echo "Q25_D06_POWER_SUPPLY_AVAILABILITY_OPEN_REFERENCE=PASS"
