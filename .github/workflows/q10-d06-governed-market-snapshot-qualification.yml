@@ -29,8 +29,8 @@ jobs:
             schema: 'emcore.q10-d06-governed-market-snapshot.v1',
             mode: 'QUALIFY',
             source_repository: 'emcore-project/emcore',
-            source_commit: '3e9cbd5152c80272516e7d99d0ebf44131b70b03',
-            source_tree: '4b0000335af23ade037ffece9b02590e8f7ff396',
+            source_commit: 'a7973d440649929245ec7d9b12bdd51f2e556e33',
+            source_tree: '715012a53f4770adac227eefad86ce9c3fc7e486',
             live_market_access_authorized: false,
             provider_mutation_authorized: false,
             deployment_authorized: false,
@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 3e9cbd5152c80272516e7d99d0ebf44131b70b03
+          ref: a7973d440649929245ec7d9b12bdd51f2e556e33
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -54,8 +54,8 @@ jobs:
       - name: Verify exact source identity
         working-directory: source
         run: |
-          test "$(git rev-parse HEAD)" = "3e9cbd5152c80272516e7d99d0ebf44131b70b03"
-          test "$(git rev-parse 'HEAD^{tree}')" = "4b0000335af23ade037ffece9b02590e8f7ff396"
+          test "$(git rev-parse HEAD)" = "a7973d440649929245ec7d9b12bdd51f2e556e33"
+          test "$(git rev-parse 'HEAD^{tree}')" = "715012a53f4770adac227eefad86ce9c3fc7e486"
 
       - name: Set up Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
