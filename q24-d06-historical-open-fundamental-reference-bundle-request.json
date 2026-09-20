@@ -1,0 +1,22 @@
+{
+  "schema": "emcore.q24-d06-historical-open-fundamental-reference-bundle.v1",
+  "mode": "QUALIFY",
+  "mission": "CC25-D06-GOVERNED-HISTORICAL-OPEN-FUNDAMENTAL-REFERENCE-BUNDLE-V1-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "80adb33372c088ee3fbb6d29cfce7251f48657c0",
+  "source_baseline": "5c26879937bc17331bd505e6720691600898b630",
+  "live_open_source_access_authorized": false,
+  "proprietary_market_access_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "customer_data_authorized": false,
+  "customer_ingestion_authorized": false,
+  "deployment_authorized": false,
+  "automatic_runtime_fetching_authorized": false,
+  "market_benchmark_ingestion_authorized": false,
+  "restricted_training_calibration_authorized": false,
+  "price_fair_value_engine_authorized": false,
+  "final_scenario_auto_execution_authorized": false,
+  "fixing_execution_authorized": false,
+  "trading_execution_authorized": false
+}
