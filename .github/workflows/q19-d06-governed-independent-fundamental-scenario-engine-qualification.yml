@@ -1,6 +1,10 @@
 name: EMCORE Q19 D06 Governed Independent Fundamental Scenario Engine Qualification
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - q19-d06-governed-independent-fundamental-scenario-engine-request.json
   pull_request:
     branches: [main]
     paths:
