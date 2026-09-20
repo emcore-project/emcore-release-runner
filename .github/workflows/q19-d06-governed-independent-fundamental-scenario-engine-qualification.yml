@@ -34,8 +34,8 @@ jobs:
             schema: 'emcore.q19-d06-governed-independent-fundamental-scenario-engine.v1',
             mode: 'QUALIFY',
             source_repository: 'emcore-project/emcore',
-            source_commit: 'f50ae2a866753904d1ac1b3b2eee8ae504f0cb63',
-            source_tree: '897d9d5fb55dc86488d508195180a27d73596f5a',
+            source_commit: '7f11b7ab46efde218d1260450e0550f38643c73e',
+            source_tree: 'af62e839fc58e33ff7b7a426493c93791d0c3762',
             pr_number: 1070,
             live_open_source_access_authorized: false,
             proprietary_market_access_authorized: false,
@@ -56,7 +56,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: f50ae2a866753904d1ac1b3b2eee8ae504f0cb63
+          ref: 7f11b7ab46efde218d1260450e0550f38643c73e
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -66,8 +66,8 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "f50ae2a866753904d1ac1b3b2eee8ae504f0cb63"
-          test "$(git rev-parse 'HEAD^{tree}')" = "897d9d5fb55dc86488d508195180a27d73596f5a"
+          test "$(git rev-parse HEAD)" = "7f11b7ab46efde218d1260450e0550f38643c73e"
+          test "$(git rev-parse 'HEAD^{tree}')" = "af62e839fc58e33ff7b7a426493c93791d0c3762"
           test -z "$(git status --porcelain)"
           echo "SOURCE_HEAD=$(git rev-parse HEAD)"
           echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
