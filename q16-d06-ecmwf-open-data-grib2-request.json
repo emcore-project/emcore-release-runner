@@ -2,7 +2,7 @@
   "schema": "emcore.q16-d06-ecmwf-open-data-grib2.v1",
   "mode": "QUALIFY",
   "source_repository": "emcore-project/emcore",
-  "source_commit": "14e6800fde37078c81039d759e8ccfbcc89f8326",
+  "source_commit": "0bd8c5c4e8dcf5830ecbe9a42003f61a8578c057",
   "pr_number": 1067,
   "ecmwf_open_data_access_authorized": true,
   "decoder_package": "@meri-imperiumi/eccodes-wasm",
