@@ -1,0 +1,13 @@
+{
+  "schema": "emcore.q8-aal2-request.v1",
+  "mode": "ACCEPT",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "102b857ca95fe292cb8333d3d2fce0512fe73213",
+  "source_tree": "9ee81e07185c7dad304e322abddd1af0bbe9a896",
+  "expected_open_pr_count": 0,
+  "pilot_base_url": "https://emcore-web-pilot.emcore-project.workers.dev",
+  "pilot_bootstrap_url": "https://qogvvvqqkipmstajvhzl.supabase.co/functions/v1/emcore-live-pilot-smoke-bootstrap",
+  "live_cloudflare_commit": "9441f5af2fd89de334cde7f9d465eb97bdc8fe93",
+  "customer_data_allowed": false,
+  "ingestion_must_remain_disabled": true
+}
