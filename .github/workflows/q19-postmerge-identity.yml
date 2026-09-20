@@ -1,0 +1,51 @@
+name: EMCORE Q19 Postmerge Identity
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - q19-postmerge-identity-request.json
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Validate identity request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q19-postmerge-identity-request.json');
+          const expected = {
+            schema: 'emcore.q19-postmerge-identity.v1',
+            source_repository: 'emcore-project/emcore',
+            source_commit: '08cd556a3e564b317786b0e5bf6f67294ab0e55d',
+            source_tree: 'af62e839fc58e33ff7b7a426493c93791d0c3762',
+            deployment_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) if (r[key] !== value) throw new Error('identity request mismatch: ' + key);
+          NODE
+      - name: Checkout exact merged source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 08cd556a3e564b317786b0e5bf6f67294ab0e55d
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify postmerge identity
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "08cd556a3e564b317786b0e5bf6f67294ab0e55d"
+          test "$(git rev-parse 'HEAD^{tree}')" = "af62e839fc58e33ff7b7a426493c93791d0c3762"
+          test -z "$(git status --porcelain)"
+          echo "POSTMERGE_MAIN=08cd556a3e564b317786b0e5bf6f67294ab0e55d"
+          echo "POSTMERGE_TREE=af62e839fc58e33ff7b7a426493c93791d0c3762"
+          echo "POSTMERGE_IDENTITY=PASS"
