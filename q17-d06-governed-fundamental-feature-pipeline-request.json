@@ -1,0 +1,17 @@
+{
+  "schema": "emcore.q17-d06-governed-fundamental-feature-pipeline.v1",
+  "mode": "QUALIFY",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "94c2ab420c74a6784f0d31d2430b47e64a85a8e3",
+  "source_tree": "4ba65ba12fbcfb9c48f71fb989ad2d4150018b8e",
+  "pr_number": 1068,
+  "live_open_source_access_authorized": false,
+  "proprietary_market_access_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "customer_data_authorized": false,
+  "customer_ingestion_authorized": false,
+  "deployment_authorized": false,
+  "automatic_runtime_fetching_authorized": false,
+  "restricted_training_calibration_authorized": false
+}
