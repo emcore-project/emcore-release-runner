@@ -1,0 +1,15 @@
+{
+  "schema": "emcore.q14-d06-live-open-adapter-wave1.v1",
+  "mode": "QUALIFY",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "f6fdc688def77299dc4b367bbe6c35cab5b097e6",
+  "pr_number": 1065,
+  "live_open_source_access_authorized": true,
+  "proprietary_market_access_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "customer_data_authorized": false,
+  "customer_ingestion_authorized": false,
+  "deployment_authorized": false,
+  "restricted_training_calibration_authorized": false
+}
