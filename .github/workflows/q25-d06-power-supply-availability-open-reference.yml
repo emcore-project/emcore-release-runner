@@ -31,7 +31,7 @@ jobs:
             mode: 'QUALIFY',
             mission: 'CC26-D06-GOVERNED-POWER-SUPPLY-AVAILABILITY-OPEN-REFERENCE-V1-001',
             source_repository: 'emcore-project/emcore',
-            source_commit: '805854ece3e462387ad10e7db04129582e53fb94',
+            source_commit: '6ab15a1c11ee4e716a38af79afe6324702801ecb',
             source_baseline: 'b44ee9933705754f34c47c883acfca7769c425a8',
             live_open_source_access_authorized: false,
             proprietary_market_access_authorized: false,
@@ -57,7 +57,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 805854ece3e462387ad10e7db04129582e53fb94
+          ref: 6ab15a1c11ee4e716a38af79afe6324702801ecb
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -67,7 +67,7 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "805854ece3e462387ad10e7db04129582e53fb94"
+          test "$(git rev-parse HEAD)" = "6ab15a1c11ee4e716a38af79afe6324702801ecb"
           test -z "$(git status --porcelain)"
           git cat-file -e b44ee9933705754f34c47c883acfca7769c425a8^{commit}
           changed="$(git diff --name-only b44ee9933705754f34c47c883acfca7769c425a8..HEAD)"
@@ -77,7 +77,7 @@ jobs:
             echo "Forbidden deployment/dependency scope change" >&2
             exit 1
           fi
-          unexpected="$(echo "$changed" | grep -Ev '^(packages/domain/src/source-intelligence\.ts|packages/server/src/source-intelligence-live-open-adapters\.ts|packages/server/src/fundamental-feature-mappings\.ts|packages/server/src/open-fundamental-reference-baselines\.ts|packages/server/src/historical-open-fundamental-reference-bundle\.ts|apps/web/src/HistoricalReferenceBundleDevPanel\.tsx|tests/governed-historical-open-fundamental-reference-bundle\.test\.ts|tests/source-intelligence-live-open-adapters\.test\.ts)$' || true)"
+          unexpected="$(echo "$changed" | grep -Ev '^(packages/domain/src/source-intelligence\.ts|packages/server/src/source-intelligence-live-open-adapters\.ts|packages/server/src/fundamental-feature-mappings\.ts|packages/server/src/open-fundamental-reference-baselines\.ts|packages/server/src/historical-open-fundamental-reference-bundle\.ts|apps/web/src/HistoricalReferenceBundleDevPanel\.tsx|tests/governed-historical-open-fundamental-reference-bundle\.test\.ts|tests/governed-open-fundamental-reference-baselines\.test\.ts|tests/source-intelligence-live-open-adapters\.test\.ts)$' || true)"
           test -z "$unexpected"
           echo "SOURCE_HEAD=$(git rev-parse HEAD)"
           echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
