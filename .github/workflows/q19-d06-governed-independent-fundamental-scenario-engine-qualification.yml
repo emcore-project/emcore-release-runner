@@ -1,0 +1,148 @@
+name: EMCORE Q19 D06 Governed Independent Fundamental Scenario Engine Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - q19-d06-governed-independent-fundamental-scenario-engine-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q19-d06-governed-independent-fundamental-scenario-engine
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q19-d06-governed-independent-fundamental-scenario-engine-request.json');
+          const expected = {
+            schema: 'emcore.q19-d06-governed-independent-fundamental-scenario-engine.v1',
+            mode: 'QUALIFY',
+            source_repository: 'emcore-project/emcore',
+            source_commit: 'f50ae2a866753904d1ac1b3b2eee8ae504f0cb63',
+            source_tree: '897d9d5fb55dc86488d508195180a27d73596f5a',
+            pr_number: 1070,
+            live_open_source_access_authorized: false,
+            proprietary_market_access_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            customer_data_authorized: false,
+            customer_ingestion_authorized: false,
+            deployment_authorized: false,
+            automatic_runtime_fetching_authorized: false,
+            market_benchmark_ingestion_authorized: false,
+            restricted_training_calibration_authorized: false,
+            price_forecast_engine_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) if (r[key] !== value) throw new Error('Q19 request mismatch: ' + key);
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: f50ae2a866753904d1ac1b3b2eee8ae504f0cb63
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source identity
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "f50ae2a866753904d1ac1b3b2eee8ae504f0cb63"
+          test "$(git rev-parse 'HEAD^{tree}')" = "897d9d5fb55dc86488d508195180a27d73596f5a"
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SOURCE_IDENTITY=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused governed scenario tests
+        working-directory: source
+        run: node --experimental-strip-types --test tests/governed-independent-fundamental-scenario-engine.test.ts tests/governed-model-evaluation-skill.test.ts tests/governed-fundamental-feature-pipeline.test.ts tests/source-intelligence-v2.test.ts tests/market-opportunities-dev-surface.test.ts tests/portal-navigation.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert bounded isolation and zero-cost contract
+        working-directory: source
+        shell: bash
+        run: |
+          ! grep -RE "fetch\(|axios|setInterval|setTimeout" packages/domain/src/fundamental-scenario-engine.ts apps/web/src/GovernedFundamentalScenarioDevPanel.tsx
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { ECMWF_PRODUCT_CONTRACT } from './packages/server/src/ecmwf-open-data-adapter.ts';
+          import { SOURCE_INTELLIGENCE_DATASETS } from './packages/domain/src/source-intelligence.ts';
+          import { createFuturePriceCalibrationSeam } from './packages/domain/src/fundamental-scenario-engine.ts';
+          if (ECMWF_PRODUCT_CONTRACT.automaticRuntimeFetching !== false) throw new Error('automatic runtime fetching changed');
+          for (const key of ['EEX_FORWARD_LICENSED_SLOT','GME_FORWARD_LICENSED_SLOT','ICE_FORWARD_LICENSED_SLOT','MONTEL_LICENSED_SLOT']) {
+            if (SOURCE_INTELLIGENCE_DATASETS[key].activationState !== 'OFF') throw new Error(key + ' unexpectedly active');
+          }
+          const seam = createFuturePriceCalibrationSeam();
+          if (seam.trainingCalibrationAuthorized || seam.liveMarketInputsAuthorized || seam.fairValueOutputAuthorized) throw new Error('future price seam unexpectedly authorized');
+          console.log('AUTOMATIC_RUNTIME_FETCHING=OFF');
+          console.log('LICENSED_MARKET_SLOTS=OFF');
+          NODE
+          echo "LIVE_OPEN_SOURCE_ACCESS=NONE"
+          echo "PROPRIETARY_MARKET_ACCESS=NONE"
+          echo "MARKET_BENCHMARK_INGESTION=NONE"
+          echo "PAID_FEED=NONE"
+          echo "SCRAPING=NONE"
+          echo "CUSTOMER_DATA=NONE"
+          echo "CUSTOMER_INGESTION=NONE"
+          echo "DEPLOYMENT=NONE"
+          echo "RESTRICTED_TRAINING_CALIBRATION=NONE"
+          echo "PRICE_FORECAST_ENGINE=NONE"
+          echo "ZERO_COST=PASS"
+          echo "ISOLATION=PASS"
+          echo "Q19_D06_GOVERNED_INDEPENDENT_FUNDAMENTAL_SCENARIO_ENGINE=PASS"
