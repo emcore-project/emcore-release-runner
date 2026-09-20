@@ -3,7 +3,7 @@
   "mode": "QUALIFY",
   "mission": "CC26-D06-GOVERNED-FUNDAMENTAL-DRIVER-SIGNAL-BUNDLE-V1-001",
   "source_repository": "emcore-project/emcore",
-  "source_commit": "e99aa0f0a75b4749b85f0c0099bebdd9d3e62d93",
+  "source_commit": "bced054e25ad3bfa3f501b124e5c73149d495e5d",
   "source_baseline": "373676a16fd2a6c9c04d1d1c93b36a47d8374b1b",
   "live_open_source_access_authorized": false,
   "proprietary_market_access_authorized": false,
