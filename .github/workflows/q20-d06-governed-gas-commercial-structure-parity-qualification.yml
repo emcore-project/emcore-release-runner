@@ -31,8 +31,8 @@ jobs:
             mode: 'QUALIFY',
             mission: 'CC24-D06-GOVERNED-GAS-COMMERCIAL-STRUCTURE-PARITY-V1-001',
             source_repository: 'emcore-project/emcore',
-            source_commit: '189e99f5ab0cba4c6c4990a64bc0e30c1109837f',
-            source_tree: '914d8cb605bb6622db7072e1dfe5932d19eb5058',
+            source_commit: 'e5785bf774741bbf441f4506bdcb462e11775002',
+            source_tree: 'bfd00b09ba1097536b87dccdabbfd4ce1d37275f',
             source_baseline: '08cd556a3e564b317786b0e5bf6f67294ab0e55d',
             live_open_source_access_authorized: false,
             proprietary_market_access_authorized: false,
@@ -57,7 +57,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 189e99f5ab0cba4c6c4990a64bc0e30c1109837f
+          ref: e5785bf774741bbf441f4506bdcb462e11775002
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -67,8 +67,8 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "189e99f5ab0cba4c6c4990a64bc0e30c1109837f"
-          test "$(git rev-parse 'HEAD^{tree}')" = "914d8cb605bb6622db7072e1dfe5932d19eb5058"
+          test "$(git rev-parse HEAD)" = "e5785bf774741bbf441f4506bdcb462e11775002"
+          test "$(git rev-parse 'HEAD^{tree}')" = "bfd00b09ba1097536b87dccdabbfd4ce1d37275f"
           test -z "$(git status --porcelain)"
           git cat-file -e 08cd556a3e564b317786b0e5bf6f67294ab0e55d^{commit}
           changed="$(git diff --name-only 08cd556a3e564b317786b0e5bf6f67294ab0e55d..HEAD)"
