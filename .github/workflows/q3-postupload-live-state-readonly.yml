@@ -1,0 +1,177 @@
+name: EMCORE Postupload Live State Read-Only
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q3-readonly-request.json
+      - .github/workflows/q3-postupload-live-state-readonly.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q3-postupload-readonly
+  cancel-in-progress: false
+
+jobs:
+  inspect-live-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate read-only request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const r = JSON.parse(fs.readFileSync('q3-readonly-request.json','utf8'));
+          const required = {
+            schema: 'emcore.q3-readonly-request.v1',
+            mode: 'INSPECT',
+            source_repository: 'emcore-project/emcore',
+            source_commit: 'f57337c622d533a0200e51fcdf798deae5130754',
+            source_tree: 'cd36bfbf4dc333b8d144b847ab13e169e183eae9',
+            expected_open_pr_count: 0,
+            target_worker: 'emcore-web-pilot',
+            cloudflare_read_only: true,
+            deployment_authorized: false
+          };
+          for (const [k,v] of Object.entries(required)) {
+            if (r[k] !== v) throw new Error('request mismatch for ' + k);
+          }
+          NODE
+
+      - name: Require read-only secrets
+        shell: bash
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$EMCORE_SOURCE_TOKEN" || { echo "EMCORE_SOURCE_TOKEN missing"; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN missing"; exit 1; }
+
+      - name: Checkout exact private EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: f57337c622d533a0200e51fcdf798deae5130754
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source and zero open PRs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          cd source
+          test "$(git rev-parse HEAD)" = "f57337c622d533a0200e51fcdf798deae5130754"
+          test "$(git rev-parse 'HEAD^{tree}')" = "cd36bfbf4dc333b8d144b847ab13e169e183eae9"
+          cd ..
+          count="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100"             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).length)))')"
+          test "$count" = "0"
+          echo "SOURCE_IDENTITY=PASS"
+          echo "OPEN_PR_COUNT=0"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install exact source dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Read current Cloudflare deployment state
+        working-directory: source
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set +x
+          npm exec --workspace @emcore/web -- wrangler deployments status --name emcore-web-pilot --json > /tmp/deployments.json 2>/tmp/deployments.err || {
+            code=$?
+            echo "DEPLOYMENTS_STATUS=FAIL"
+            sed -E 's/[A-Za-z0-9_-]{32,}/[redacted]/g' /tmp/deployments.err
+            exit "$code"
+          }
+          node <<'NODE'
+          const fs=require('fs');
+          const x=JSON.parse(fs.readFileSync('/tmp/deployments.json','utf8'));
+          function scrub(v){
+            if(Array.isArray(v)) return v.map(scrub);
+            if(v && typeof v==='object'){
+              const o={};
+              for(const [k,val] of Object.entries(v)){
+                if(/account|token|secret|script/i.test(k)) continue;
+                if(/id|created|time|percent|traffic|version|source|author|annotation|message/i.test(k)) o[k]=scrub(val);
+              }
+              return o;
+            }
+            return v;
+          }
+          console.log('DEPLOYMENTS_STATUS=PASS');
+          console.log('DEPLOYMENTS_SANITIZED='+JSON.stringify(scrub(x)));
+          NODE
+          rm -f /tmp/deployments.json /tmp/deployments.err
+
+      - name: Read recent Cloudflare Worker versions
+        working-directory: source
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set +x
+          npm exec --workspace @emcore/web -- wrangler versions list --name emcore-web-pilot --json > /tmp/versions.json 2>/tmp/versions.err || {
+            code=$?
+            echo "VERSIONS_LIST=FAIL"
+            sed -E 's/[A-Za-z0-9_-]{32,}/[redacted]/g' /tmp/versions.err
+            exit "$code"
+          }
+          node <<'NODE'
+          const fs=require('fs');
+          const x=JSON.parse(fs.readFileSync('/tmp/versions.json','utf8'));
+          function pick(v){
+            if(Array.isArray(v)) return v.slice(0,10).map(pick);
+            if(v && typeof v==='object'){
+              const o={};
+              for(const [k,val] of Object.entries(v)){
+                if(/account|token|secret|script/i.test(k)) continue;
+                if(/id|created|time|version|source|author|annotation|message/i.test(k)) o[k]=pick(val);
+              }
+              return o;
+            }
+            return v;
+          }
+          console.log('VERSIONS_LIST=PASS');
+          console.log('VERSIONS_SANITIZED='+JSON.stringify(pick(x)));
+          NODE
+          rm -f /tmp/versions.json /tmp/versions.err
+
+      - name: Read public runtime and deployment identity
+        shell: bash
+        run: |
+          runtime_status="$(curl -sS -o /tmp/runtime.json -w '%{http_code}' https://emcore-web-pilot.emcore-project.workers.dev/api/runtime-config)"
+          identity_status="$(curl -sS -o /tmp/identity.json -w '%{http_code}' https://emcore-web-pilot.emcore-project.workers.dev/api/deployment-identity)"
+          echo "RUNTIME_HTTP=$runtime_status"
+          node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/runtime.json","utf8")); console.log("RUNTIME_SAFE="+JSON.stringify({supabaseUrl:x.supabaseUrl,authMode:x.authMode,documentIngestionEnabled:x.documentIngestionEnabled,allowedOrganizationId:x.allowedOrganizationId}))'
+          echo "IDENTITY_HTTP=$identity_status"
+          node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/identity.json","utf8")); const y=x.commitSha?{commitSha:x.commitSha}:{errorCode:x?.error?.code}; console.log("IDENTITY_SAFE="+JSON.stringify(y))'
+          rm -f /tmp/runtime.json /tmp/identity.json
+
+      - name: Terminal read-only assertion
+        shell: bash
+        run: |
+          echo "PROVIDER_MUTATION=NONE"
+          echo "DEPLOYMENT_ATTEMPT=NONE"
+          echo "PERMISSION_CHANGE=NONE"
+          echo "SUPABASE_MUTATION=NONE"
+          echo "CUSTOMER_DATA_MUTATION=NONE"
+          echo "INGESTION_ENABLEMENT=NONE"
+          echo "MISSION_COMPLETE=READ_ONLY"
