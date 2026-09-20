@@ -1,0 +1,20 @@
+{
+  "schema": "emcore.q19-d06-governed-independent-fundamental-scenario-engine.v1",
+  "mode": "QUALIFY",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "f50ae2a866753904d1ac1b3b2eee8ae504f0cb63",
+  "source_tree": "897d9d5fb55dc86488d508195180a27d73596f5a",
+  "pr_number": 1070,
+  "live_open_source_access_authorized": false,
+  "proprietary_market_access_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "customer_data_authorized": false,
+  "customer_ingestion_authorized": false,
+  "deployment_authorized": false,
+  "automatic_runtime_fetching_authorized": false,
+  "market_benchmark_ingestion_authorized": false,
+  "restricted_training_calibration_authorized": false,
+  "price_forecast_engine_authorized": false,
+  "request_revision": 1
+}
