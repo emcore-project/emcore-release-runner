@@ -1,0 +1,42 @@
+name: EMCORE Q13 Postmerge Identity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q13-postmerge-identity-request.json
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Validate request
+        run: |
+          node <<'NODE'
+          const r = require('./q13-postmerge-identity-request.json');
+          if (r.source_repository !== 'emcore-project/emcore') throw new Error('repository mismatch');
+          if (r.source_commit !== '46cba63189ecd451d3a41703bbfb1ac258cff3f7') throw new Error('commit mismatch');
+          if (r.read_only !== true) throw new Error('read-only required');
+          NODE
+      - name: Checkout exact canonical main
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 46cba63189ecd451d3a41703bbfb1ac258cff3f7
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Report exact identity
+        working-directory: source
+        run: |
+          test "$(git rev-parse HEAD)" = "46cba63189ecd451d3a41703bbfb1ac258cff3f7"
+          echo "RESULTING_MAIN=$(git rev-parse HEAD)"
+          echo "RESULTING_MAIN_TREE=$(git rev-parse 'HEAD^{tree}')"
+          test -z "$(git status --porcelain)"
+          echo "POSTMERGE_IDENTITY=PASS"
