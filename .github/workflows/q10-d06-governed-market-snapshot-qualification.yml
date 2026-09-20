@@ -1,0 +1,106 @@
+name: EMCORE Q10 D06 Governed Market Snapshot Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q10-d06-governed-market-snapshot-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q10-d06-governed-market-snapshot
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate repository-only request
+        run: |
+          node <<'NODE'
+          const r = require('./q10-d06-governed-market-snapshot-request.json');
+          const expected = {
+            schema: 'emcore.q10-d06-governed-market-snapshot.v1',
+            mode: 'QUALIFY',
+            source_repository: 'emcore-project/emcore',
+            source_commit: '3e9cbd5152c80272516e7d99d0ebf44131b70b03',
+            source_tree: '4b0000335af23ade037ffece9b02590e8f7ff396',
+            live_market_access_authorized: false,
+            provider_mutation_authorized: false,
+            deployment_authorized: false,
+            customer_data_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q10 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 3e9cbd5152c80272516e7d99d0ebf44131b70b03
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source identity
+        working-directory: source
+        run: |
+          test "$(git rev-parse HEAD)" = "3e9cbd5152c80272516e7d99d0ebf44131b70b03"
+          test "$(git rev-parse 'HEAD^{tree}')" = "4b0000335af23ade037ffece9b02590e8f7ff396"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Focused governed snapshot tests
+        working-directory: source
+        run: node --experimental-strip-types --test tests/governed-market-snapshot-intake.test.ts tests/forward-scenario-engine.test.ts tests/market-opportunities-dev-surface.test.ts tests/portal-navigation.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+
+      - name: Release hardening
+        working-directory: source
+        run: npm run check:release-hardening
+
+      - name: Assert isolation
+        run: |
+          echo "LIVE_MARKET_ACCESS=NONE"
+          echo "PROVIDER_MUTATION=NONE"
+          echo "DEPLOYMENT=NONE"
+          echo "CUSTOMER_DATA=NONE"
+          echo "INGESTION_ENABLEMENT=NONE"
+          echo "ZERO_COST=PASS"
+          echo "Q10_D06_GOVERNED_MARKET_SNAPSHOT=PASS"
