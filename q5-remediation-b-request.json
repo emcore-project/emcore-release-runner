@@ -1,0 +1,10 @@
+{
+  "schema": "emcore.q5-remediation-b.v1",
+  "mode": "QUALIFY",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "2d5f531aa45272faae7a2a521d880c75fe3a8651",
+  "source_tree": "925e3f60b7356a1a679785627168a6740ddd1abc",
+  "pr_number": 1057,
+  "deployment_authorized": false,
+  "provider_access_authorized": false
+}
