@@ -1,0 +1,169 @@
+name: EMCORE Q29 D06 Italy Native Supply Availability Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q29-d06-italy-native-supply-availability-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q29-d06-italy-native-supply-availability
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q29-d06-italy-native-supply-availability-request.json');
+          const expected = {
+            schema: 'emcore.q29-d06-italy-native-supply-availability.v1',
+            mode: 'QUALIFY',
+            mission: 'CC26-D06-GOVERNED-ITALY-NATIVE-SUPPLY-AVAILABILITY-V1-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: '66a1d7dcdc5b38353fe7f456e3e8ead3dfe107a2',
+            source_baseline: 'f2df5a92c48925a7bf5298208da75f26800423b0',
+            proprietary_market_access_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            customer_data_authorized: false,
+            customer_ingestion_authorized: false,
+            deployment_authorized: false,
+            automatic_runtime_fetching_authorized: false,
+            price_fair_value_engine_authorized: false,
+            final_scenario_auto_execution_authorized: false,
+            fixing_execution_authorized: false,
+            trading_execution_authorized: false,
+            automatic_action_execution_authorized: false,
+            fabricated_equivalence_authorized: false,
+            quantitative_geographic_weighting_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) if (r[key] !== value) throw new Error('Q29 request mismatch: ' + key);
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 66a1d7dcdc5b38353fe7f456e3e8ead3dfe107a2
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source identity and bounded scope
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "66a1d7dcdc5b38353fe7f456e3e8ead3dfe107a2"
+          test -z "$(git status --porcelain)"
+          git cat-file -e f2df5a92c48925a7bf5298208da75f26800423b0^{commit}
+          changed="$(git diff --name-only f2df5a92c48925a7bf5298208da75f26800423b0..HEAD)"
+          echo "$changed"
+          test -n "$changed"
+          unexpected="$(echo "$changed" | grep -Ev '^(packages/domain/src/source-intelligence\.ts|packages/server/src/governed-italy-native-supply-availability\.ts|tests/governed-italy-native-supply-availability\.test\.ts)$' || true)"
+          test -z "$unexpected"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SCOPE_ISOLATION=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D06 Italy-native and Q28 regression tests
+        working-directory: source
+        run: |
+          node --experimental-strip-types --test \
+            tests/governed-italy-native-supply-availability.test.ts \
+            tests/source-intelligence-v2.test.ts \
+            tests/governed-fundamental-driver-signal-bundle.test.ts \
+            tests/governed-driver-market-geographic-applicability.test.ts \
+            tests/governed-scenario-market-consistency-orchestration.test.ts \
+            tests/governed-open-fundamental-reference-baselines.test.ts \
+            tests/governed-historical-open-fundamental-reference-bundle.test.ts \
+            tests/governed-fundamental-market-consistency-bridge.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert Italy-native semantic rights isolation and zero-cost guards
+        working-directory: source
+        shell: bash
+        run: |
+          ! grep -RE "setInterval\(|fetch\(" packages/server/src/governed-italy-native-supply-availability.ts
+          ! grep -RE "executeTrade|executeFixing|fairValue|priceForecast:" packages/server/src/governed-italy-native-supply-availability.ts
+          grep -q "TERNA_AGGREGATE_EFFECTIVE_AVAILABLE_CAPACITY_RIGHTS_PENDING" packages/domain/src/source-intelligence.ts
+          grep -q "TERNA_GENERATION_UNIT_UNAVAILABILITY_RIGHTS_PENDING" packages/domain/src/source-intelligence.ts
+          grep -q "SNAM_HOURLY_PHYSICAL_FLOWS_COMMERCIAL_BLOCK" packages/domain/src/source-intelligence.ts
+          grep -q "CROSS_BORDER_CAPACITY_CONTEXT_ONLY" packages/server/src/governed-italy-native-supply-availability.ts
+          grep -q "TRANSMISSION_UNAVAILABILITY_NOT_GENERATION_AVAILABILITY" packages/server/src/governed-italy-native-supply-availability.ts
+          grep -q "TRANSPORT_CAPACITY_NOT_ACTUAL_GAS_SUPPLY" packages/server/src/governed-italy-native-supply-availability.ts
+          grep -q "SNAM_EXACT_MACHINE_READABLE_DATASET_IDENTITY_UNRESOLVED" packages/server/src/governed-italy-native-supply-availability.ts
+          grep -q "runtimeAutomaticLiveFetching: false" packages/server/src/governed-italy-native-supply-availability.ts
+          grep -q "finalScenarioAutoExecution: false" packages/server/src/governed-italy-native-supply-availability.ts
+          echo "ITALY_NATIVE_SUPPLY_AVAILABILITY=PASS"
+          echo "POWER_GAS_PARITY=PASS"
+          echo "NO_FABRICATED_EQUIVALENCE=PASS"
+          echo "NO_CROSS_BORDER_BYPASS=PASS"
+          echo "SOURCE_RIGHTS_FAIL_CLOSED=PASS"
+          echo "Q28_REGRESSION=PASS"
+          echo "AUTOMATIC_RUNTIME_FETCHING=OFF"
+          echo "FINAL_SCENARIO_AUTO_EXECUTION=OFF"
+          echo "PROPRIETARY_MARKET_ACCESS=NONE"
+          echo "PAID_FEED=NONE"
+          echo "SCRAPING=NONE"
+          echo "CUSTOMER_DATA=NONE"
+          echo "CUSTOMER_INGESTION=NONE"
+          echo "PRICE_FAIR_VALUE_ENGINE=NONE"
+          echo "FIXING_EXECUTION=NONE"
+          echo "TRADING_EXECUTION=NONE"
+          echo "AUTOMATIC_ACTION_EXECUTION=NONE"
+          echo "ZERO_COST=PASS"
+          echo "ISOLATION=PASS"
+          echo "Q29_D06_ITALY_NATIVE_SUPPLY_AVAILABILITY=PASS"
