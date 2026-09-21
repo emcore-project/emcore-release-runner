@@ -1,0 +1,68 @@
+name: EMCORE Q38 V1 Single Chain Postmerge Identity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q38-v1-single-chain-postmerge-identity-request.json
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate postmerge request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q38-v1-single-chain-postmerge-identity-request.json');
+          const expected = {
+            schema: 'emcore.q38-v1-single-chain-postmerge-identity.v1',
+            mode: 'VERIFY_POSTMERGE_IDENTITY',
+            mission: 'CC32-V1-SINGLE-CHAIN-INTEGRATION-PROOF-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: '3f5063c1bad543fc48347c472148f024b29dd583',
+            expected_tree: '799461fc64a77133a607c3b8bc7f940341361630',
+            qualified_tree: '799461fc64a77133a607c3b8bc7f940341361630',
+            deployment_authorized: false,
+            q29_bypass_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q38 postmerge request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact merged main
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 3f5063c1bad543fc48347c472148f024b29dd583
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify postmerge identity
+        working-directory: source
+        shell: bash
+        run: |
+          head="$(git rev-parse HEAD)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          test "$head" = "3f5063c1bad543fc48347c472148f024b29dd583"
+          test "$tree" = "799461fc64a77133a607c3b8bc7f940341361630"
+          test "$tree" = "799461fc64a77133a607c3b8bc7f940341361630"
+          test -z "$(git status --porcelain)"
+          test -f tests/v1-single-chain-integration-proof.test.ts
+          echo "POSTMERGE_HEAD=$head"
+          echo "POSTMERGE_TREE=$tree"
+          echo "QUALIFIED_TREE=799461fc64a77133a607c3b8bc7f940341361630"
+          echo "POSTMERGE_IDENTITY=PASS"
+          echo "SINGLE_CHAIN_PROOF_PRESENT=PASS"
+          echo "DEPLOYMENT_MUTATION=NONE"
+          echo "Q29_READINESS_BYPASS=NONE"
