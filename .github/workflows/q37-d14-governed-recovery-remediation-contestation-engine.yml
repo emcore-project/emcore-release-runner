@@ -56,7 +56,7 @@ jobs:
         with:
           repository: emcore-project/emcore
           ref: fad1b2ccb85f590e667ea4ece3cc3df6e159c3e1
-          token: \${{ secrets.EMCORE_SOURCE_TOKEN }}
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
           fetch-depth: 0
