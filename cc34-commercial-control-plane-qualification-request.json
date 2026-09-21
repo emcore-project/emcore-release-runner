@@ -1,0 +1,19 @@
+{
+  "schema": "emcore.cc34-commercial-control-plane-qualification.v1",
+  "mode": "QUALIFY",
+  "mission": "CC34-W4-COMMERCIAL-CONTROL-PLANE-V1-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "6bd6a9636bc3bdc232c78e37c939f1533c469509",
+  "source_tree": "25c6732155ab5cf32bf2d22986da35540fb25c2b",
+  "source_baseline": "3f5063c1bad543fc48347c472148f024b29dd583",
+  "source_pr": 1090,
+  "expected_open_pr_count": 1,
+  "deployment_authorized": false,
+  "customer_data_authorized": false,
+  "onboarding_authorized": false,
+  "ingestion_enablement_authorized": false,
+  "outreach_authorized": false,
+  "payment_provider_authorized": false,
+  "partner_remuneration_authorized": false,
+  "q29_bypass_authorized": false
+}
