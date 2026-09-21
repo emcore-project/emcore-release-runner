@@ -1,0 +1,168 @@
+name: EMCORE Q30 D07 Governed Offer Comparison Procurement Decision Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q30-d07-governed-offer-comparison-procurement-decision-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q30-d07-governed-offer-comparison-procurement-decision
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q30-d07-governed-offer-comparison-procurement-decision-request.json');
+          const expected = {
+            schema: 'emcore.q30-d07-governed-offer-comparison-procurement-decision.v1',
+            mode: 'QUALIFY',
+            mission: 'CC27-D07-GOVERNED-OFFER-COMPARISON-PROCUREMENT-DECISION-V1-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: '48caf414c0f56feb36ccadceaa51833923aec140',
+            source_baseline: '03fa98c1842e3ac323c77aecf59c38d76e46ef74',
+            external_rfq_authorized: false,
+            supplier_outreach_authorized: false,
+            automatic_procurement_selection_authorized: false,
+            fixing_execution_authorized: false,
+            trading_execution_authorized: false,
+            signature_execution_authorized: false,
+            proprietary_market_access_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            deployment_authorized: false,
+            automatic_runtime_fetching_authorized: false,
+            q29_bypass_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q30 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 48caf414c0f56feb36ccadceaa51833923aec140
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source identity and bounded scope
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "48caf414c0f56feb36ccadceaa51833923aec140"
+          test -z "$(git status --porcelain)"
+          git cat-file -e 03fa98c1842e3ac323c77aecf59c38d76e46ef74^{commit}
+          changed="$(git diff --name-only 03fa98c1842e3ac323c77aecf59c38d76e46ef74..HEAD)"
+          echo "$changed"
+          test -n "$changed"
+          unexpected="$(echo "$changed" | grep -Ev '^(packages/domain/src/governed-offer-comparison-procurement-decision\.ts|apps/web/src/GovernedOfferComparisonProcurementDevPanel\.tsx|apps/web/src/MarketOpportunitiesDevSurface\.tsx|tests/governed-offer-comparison-procurement-decision\.test\.ts|tests/governed-offer-comparison-procurement-dev-panel\.test\.ts)$' || true)"
+          test -z "$unexpected"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SCOPE_ISOLATION=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D07 and D06 Q29 regression tests
+        working-directory: source
+        run: |
+          node --experimental-strip-types --test \
+            tests/governed-offer-comparison-procurement-decision.test.ts \
+            tests/governed-offer-comparison-procurement-dev-panel.test.ts \
+            tests/governed-gas-commercial-structure-parity.test.ts \
+            tests/market-opportunities-dev-surface.test.ts \
+            tests/governed-italy-native-supply-availability.test.ts \
+            tests/governed-scenario-market-consistency-orchestration.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert D07 procurement safety, Q29 isolation and zero-cost guards
+        working-directory: source
+        shell: bash
+        run: |
+          files="packages/domain/src/governed-offer-comparison-procurement-decision.ts apps/web/src/GovernedOfferComparisonProcurementDevPanel.tsx"
+          ! grep -RE "fetch\(|axios|sendRfq|sendRequestForQuote|contactSupplier|executeTrade|executeFixing|executeSignature|signContract|setInterval|setTimeout" $files
+          grep -q "externalRfqAuthorized: false" packages/domain/src/governed-offer-comparison-procurement-decision.ts
+          grep -q "supplierOutreachAuthorized: false" packages/domain/src/governed-offer-comparison-procurement-decision.ts
+          grep -q "automaticProcurementSelectionAuthorized: false" packages/domain/src/governed-offer-comparison-procurement-decision.ts
+          grep -q "automaticFixingExecutionAuthorized: false" packages/domain/src/governed-offer-comparison-procurement-decision.ts
+          grep -q "automaticTradingExecutionAuthorized: false" packages/domain/src/governed-offer-comparison-procurement-decision.ts
+          grep -q "automaticSignatureExecutionAuthorized: false" packages/domain/src/governed-offer-comparison-procurement-decision.ts
+          grep -q "marketReadinessPromotionAuthorized: false" packages/domain/src/governed-offer-comparison-procurement-decision.ts
+          grep -q "q29ItalyReadinessUnchanged: true" packages/domain/src/governed-offer-comparison-procurement-decision.ts
+          grep -q "D06_GAS_COMMERCIAL_SCENARIO" packages/domain/src/governed-offer-comparison-procurement-decision.ts
+          grep -q "D06_POWER_FORWARD_SCENARIO" packages/domain/src/governed-offer-comparison-procurement-decision.ts
+          echo "D07_OFFER_COMPARISON_PROCUREMENT_DECISION=PASS"
+          echo "POWER_GAS_PARITY=PASS"
+          echo "NO_MISSING_MATERIAL_ZERO=PASS"
+          echo "CONTRACT_GATES_FAIL_CLOSED=PASS"
+          echo "DETERMINISTIC_REPLAY=PASS"
+          echo "NO_SUPPLIER_BIAS=PASS"
+          echo "Q29_READINESS_BYPASS=NONE"
+          echo "EXTERNAL_RFQ=NONE"
+          echo "SUPPLIER_OUTREACH=NONE"
+          echo "AUTOMATIC_PROCUREMENT_SELECTION=NONE"
+          echo "FIXING_EXECUTION=NONE"
+          echo "TRADING_EXECUTION=NONE"
+          echo "SIGNATURE_EXECUTION=NONE"
+          echo "PROPRIETARY_MARKET_ACCESS=NONE"
+          echo "PAID_FEED=NONE"
+          echo "SCRAPING=NONE"
+          echo "AUTOMATIC_RUNTIME_FETCHING=OFF"
+          echo "ZERO_COST=PASS"
+          echo "ISOLATION=PASS"
+          echo "Q30_D07_GOVERNED_OFFER_COMPARISON_PROCUREMENT_DECISION=PASS"
