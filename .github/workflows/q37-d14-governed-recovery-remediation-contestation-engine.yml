@@ -31,8 +31,8 @@ jobs:
             mode: 'QUALIFY',
             mission: 'CC31-D14-GOVERNED-RECOVERY-REMEDIATION-CONTESTATION-ENGINE-V1-001',
             source_repository: 'emcore-project/emcore',
-            source_commit: 'fad1b2ccb85f590e667ea4ece3cc3df6e159c3e1',
-            source_tree: '89bdbbf975e553a8adc6740867246847e442ac13',
+            source_commit: '4b82bc5d365f21cb1e5357781817f0368c99d783',
+            source_tree: '52b9e3247d0437a5fcbe2d5adc914e6bd66b614c',
             source_baseline: 'b50de2c6ae2dcb2c0cfcfbc709f6d4a296cd03d0',
             external_outreach_authorized: false,
             claim_submission_authorized: false,
@@ -55,7 +55,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: fad1b2ccb85f590e667ea4ece3cc3df6e159c3e1
+          ref: 4b82bc5d365f21cb1e5357781817f0368c99d783
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -65,8 +65,8 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "fad1b2ccb85f590e667ea4ece3cc3df6e159c3e1"
-          test "$(git rev-parse 'HEAD^{tree}')" = "89bdbbf975e553a8adc6740867246847e442ac13"
+          test "$(git rev-parse HEAD)" = "4b82bc5d365f21cb1e5357781817f0368c99d783"
+          test "$(git rev-parse 'HEAD^{tree}')" = "52b9e3247d0437a5fcbe2d5adc914e6bd66b614c"
           test -z "$(git status --porcelain)"
           git cat-file -e b50de2c6ae2dcb2c0cfcfbc709f6d4a296cd03d0^{commit}
           changed="$(git diff --name-only b50de2c6ae2dcb2c0cfcfbc709f6d4a296cd03d0..HEAD)"
