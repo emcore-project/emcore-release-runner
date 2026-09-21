@@ -1,0 +1,10 @@
+{
+  "schema": "emcore.q35-d12-postmerge-identity.v1",
+  "mode": "VERIFY_POSTMERGE_IDENTITY",
+  "mission": "CC30-D12-GOVERNED-TECHNICAL-OPTIMIZATION-SIGNALS-ENGINE-V1-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "6a599870ae37f3e2a9322d08df387d5646b69f86",
+  "expected_tree": "196488f2ea52e3476541a08ab950e7523170a4cb",
+  "deployment_authorized": false,
+  "q29_bypass_authorized": false
+}
