@@ -1,0 +1,16 @@
+{
+  "schema": "emcore.q38-v1-single-chain-integration-proof.v1",
+  "mode": "QUALIFY",
+  "mission": "CC32-V1-SINGLE-CHAIN-INTEGRATION-PROOF-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "f253bf139bc485e215853c4cb145ed20c066c997",
+  "source_tree": "2fb348410708853df55e9e917a120d39812dd28b",
+  "source_baseline": "4ce225dbbaee00ccd7f42dca228aa5c81c40b125",
+  "external_execution_authorized": false,
+  "production_customer_data_authorized": false,
+  "proprietary_data_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "deployment_authorized": false,
+  "q29_bypass_authorized": false
+}
