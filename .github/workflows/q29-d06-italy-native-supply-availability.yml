@@ -31,7 +31,7 @@ jobs:
             mode: 'QUALIFY',
             mission: 'CC26-D06-GOVERNED-ITALY-NATIVE-SUPPLY-AVAILABILITY-V1-001',
             source_repository: 'emcore-project/emcore',
-            source_commit: '66a1d7dcdc5b38353fe7f456e3e8ead3dfe107a2',
+            source_commit: 'dbaa9f8134b59c145f2581ab6c5f16a55dde353f',
             source_baseline: 'f2df5a92c48925a7bf5298208da75f26800423b0',
             proprietary_market_access_authorized: false,
             paid_feed_authorized: false,
@@ -55,7 +55,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 66a1d7dcdc5b38353fe7f456e3e8ead3dfe107a2
+          ref: dbaa9f8134b59c145f2581ab6c5f16a55dde353f
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -65,7 +65,7 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "66a1d7dcdc5b38353fe7f456e3e8ead3dfe107a2"
+          test "$(git rev-parse HEAD)" = "dbaa9f8134b59c145f2581ab6c5f16a55dde353f"
           test -z "$(git status --porcelain)"
           git cat-file -e f2df5a92c48925a7bf5298208da75f26800423b0^{commit}
           changed="$(git diff --name-only f2df5a92c48925a7bf5298208da75f26800423b0..HEAD)"
