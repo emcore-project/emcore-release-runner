@@ -1,0 +1,64 @@
+name: EMCORE Q35 D12 Postmerge Identity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q35-d12-postmerge-identity-request.json
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate postmerge request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q35-d12-postmerge-identity-request.json');
+          const expected = {
+            schema: 'emcore.q35-d12-postmerge-identity.v1',
+            mode: 'VERIFY_POSTMERGE_IDENTITY',
+            mission: 'CC30-D12-GOVERNED-TECHNICAL-OPTIMIZATION-SIGNALS-ENGINE-V1-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: '6a599870ae37f3e2a9322d08df387d5646b69f86',
+            expected_tree: '196488f2ea52e3476541a08ab950e7523170a4cb',
+            deployment_authorized: false,
+            q29_bypass_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q35 postmerge request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact merged main
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 6a599870ae37f3e2a9322d08df387d5646b69f86
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify postmerge identity
+        working-directory: source
+        shell: bash
+        run: |
+          head="$(git rev-parse HEAD)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          test "$head" = "6a599870ae37f3e2a9322d08df387d5646b69f86"
+          test "$tree" = "196488f2ea52e3476541a08ab950e7523170a4cb"
+          test -z "$(git status --porcelain)"
+          echo "POSTMERGE_HEAD=$head"
+          echo "POSTMERGE_TREE=$tree"
+          echo "QUALIFIED_TREE=196488f2ea52e3476541a08ab950e7523170a4cb"
+          echo "POSTMERGE_IDENTITY=PASS"
+          echo "DEPLOYMENT_MUTATION=NONE"
+          echo "Q29_READINESS_BYPASS=NONE"
