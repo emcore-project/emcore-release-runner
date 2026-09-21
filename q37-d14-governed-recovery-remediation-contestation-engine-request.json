@@ -16,5 +16,6 @@
   "paid_feed_authorized": false,
   "scraping_authorized": false,
   "deployment_authorized": false,
-  "q29_bypass_authorized": false
+  "q29_bypass_authorized": false,
+  "retry": 1
 }
