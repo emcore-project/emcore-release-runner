@@ -1,0 +1,22 @@
+{
+  "schema": "emcore.q29-d06-italy-native-supply-availability.v1",
+  "mode": "QUALIFY",
+  "mission": "CC26-D06-GOVERNED-ITALY-NATIVE-SUPPLY-AVAILABILITY-V1-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "66a1d7dcdc5b38353fe7f456e3e8ead3dfe107a2",
+  "source_baseline": "f2df5a92c48925a7bf5298208da75f26800423b0",
+  "proprietary_market_access_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "customer_data_authorized": false,
+  "customer_ingestion_authorized": false,
+  "deployment_authorized": false,
+  "automatic_runtime_fetching_authorized": false,
+  "price_fair_value_engine_authorized": false,
+  "final_scenario_auto_execution_authorized": false,
+  "fixing_execution_authorized": false,
+  "trading_execution_authorized": false,
+  "automatic_action_execution_authorized": false,
+  "fabricated_equivalence_authorized": false,
+  "quantitative_geographic_weighting_authorized": false
+}
