@@ -1,0 +1,19 @@
+{
+  "schema": "emcore.q33-d10-governed-obligation-deadline-engine.v1",
+  "mode": "QUALIFY",
+  "mission": "CC29-D10-GOVERNED-OBLIGATION-DEADLINE-DECISION-WINDOW-ENGINE-V1-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "f2be1b5555a28c0b8ccc04b3278885e4ee0fd49b",
+  "source_baseline": "8674507096fc4c0fa73133f723f12111b434df63",
+  "notification_delivery_authorized": false,
+  "external_execution_authorized": false,
+  "customer_outreach_authorized": false,
+  "supplier_distributor_authority_outreach_authorized": false,
+  "production_customer_data_enablement_authorized": false,
+  "proprietary_data_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "deployment_authorized": false,
+  "automatic_runtime_fetching_authorized": false,
+  "q29_bypass_authorized": false
+}
