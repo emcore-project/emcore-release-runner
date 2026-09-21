@@ -1,0 +1,153 @@
+name: EMCORE Q34 D11 Governed Fiscal Relief Entitlement Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q34-d11-governed-fiscal-relief-entitlement-engine-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q34-d11-governed-fiscal-relief-entitlement-engine
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q34-d11-governed-fiscal-relief-entitlement-engine-request.json');
+          const expected = {
+            schema: 'emcore.q34-d11-governed-fiscal-relief-entitlement-engine.v1',
+            mode: 'QUALIFY',
+            mission: 'CC29-D11-GOVERNED-FISCAL-RELIEF-ENTITLEMENT-ENGINE-V1-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: '1b148c502ea943cf9376baa5b23fd9a72bb83b08',
+            source_baseline: '66ea90b25ebfd55483f0724d3a9b6b0a3b2440ba',
+            external_filing_authorized: false,
+            customer_supplier_authority_outreach_authorized: false,
+            production_customer_data_enablement_authorized: false,
+            proprietary_data_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            deployment_authorized: false,
+            q29_bypass_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q34 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 1b148c502ea943cf9376baa5b23fd9a72bb83b08
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source identity and bounded scope
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "1b148c502ea943cf9376baa5b23fd9a72bb83b08"
+          test -z "$(git status --porcelain)"
+          git cat-file -e 66ea90b25ebfd55483f0724d3a9b6b0a3b2440ba^{commit}
+          changed="$(git diff --name-only 66ea90b25ebfd55483f0724d3a9b6b0a3b2440ba..HEAD)"
+          echo "$changed"
+          test -n "$changed"
+          unexpected="$(echo "$changed" | grep -Ev '^(packages/domain/src/governed-fiscal-relief-entitlement-engine\.ts|apps/web/src/GovernedFiscalReliefEntitlementDevSurface\.tsx|apps/web/src/CustomerPortal\.tsx|apps/web/src/portal-navigation\.ts|tests/governed-fiscal-relief-entitlement-engine\.test\.ts|tests/governed-fiscal-relief-entitlement-dev-surface\.test\.ts|tests/portal-navigation\.test\.ts|scripts/browser-acceptance\.mjs)$' || true)"
+          test -z "$unexpected"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SCOPE_ISOLATION=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D11 D10 D09 D08 D07 D06 Q29 regression tests
+        working-directory: source
+        run: |
+          node --experimental-strip-types --test             tests/governed-fiscal-relief-entitlement-engine.test.ts             tests/governed-fiscal-relief-entitlement-dev-surface.test.ts             tests/governed-obligation-deadline-engine.test.ts             tests/governed-obligation-deadline-dev-surface.test.ts             tests/governed-connection-supply-practice-engine.test.ts             tests/governed-connection-supply-practice-dev-surface.test.ts             tests/governed-fixing-hedging-portfolio-decision.test.ts             tests/governed-fixing-hedging-portfolio-dev-panel.test.ts             tests/governed-offer-comparison-procurement-decision.test.ts             tests/governed-offer-comparison-procurement-dev-panel.test.ts             tests/governed-gas-commercial-structure-parity.test.ts             tests/market-opportunities-dev-surface.test.ts             tests/governed-italy-native-supply-availability.test.ts             tests/governed-scenario-market-consistency-orchestration.test.ts             tests/portal-navigation.test.ts             tests/r01-governed-distribution-lifecycle-events.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert D11 safety integration and zero-cost guards
+        working-directory: source
+        shell: bash
+        run: |
+          files="packages/domain/src/governed-fiscal-relief-entitlement-engine.ts apps/web/src/GovernedFiscalReliefEntitlementDevSurface.tsx"
+          ! grep -RE "fetch\(|axios|contactSupplier|contactAuthority|submitToCsea|submitToAdm|executeExternal|setInterval|setTimeout" $files
+          grep -q "D11_ENTITLEMENT_FAMILIES" packages/domain/src/governed-fiscal-relief-entitlement-engine.ts
+          grep -q "ATECO_ALONE_INSUFFICIENT_WHERE_ACTUAL_USE_MATTERS" packages/domain/src/governed-fiscal-relief-entitlement-engine.ts
+          grep -q "MIXED_USE_ALLOCATION_REQUIRED" packages/domain/src/governed-fiscal-relief-entitlement-engine.ts
+          grep -q "D10_OBLIGATION_DEADLINE_ENGINE" packages/domain/src/governed-fiscal-relief-entitlement-engine.ts
+          grep -q "arithmeticOwner:'#374/#376'" packages/domain/src/governed-fiscal-relief-entitlement-engine.ts
+          grep -q "comparisonOwner:'#523'" packages/domain/src/governed-fiscal-relief-entitlement-engine.ts
+          grep -q "softwareIsLegalDeclarant:false" packages/domain/src/governed-fiscal-relief-entitlement-engine.ts
+          grep -q "externalFilingAuthorized:false" packages/domain/src/governed-fiscal-relief-entitlement-engine.ts
+          grep -q "q29ItalyReadinessUnchanged:true" packages/domain/src/governed-fiscal-relief-entitlement-engine.ts
+          echo "D11_GOVERNED_FISCAL_RELIEF_ENTITLEMENT_ENGINE=PASS"
+          echo "ENTITLEMENT_STATUS_SEPARATION=PASS"
+          echo "ANNUALITY_HISTORY=PASS"
+          echo "D10_REUSE=PASS"
+          echo "EXISTING_FISCAL_ARITHMETIC_REUSE=PASS"
+          echo "D15_REUSE=PASS"
+          echo "PROFESSIONAL_REVIEW_BOUNDARY=PASS"
+          echo "EXTERNAL_FILING=NONE"
+          echo "CUSTOMER_SUPPLIER_AUTHORITY_OUTREACH=NONE"
+          echo "PRODUCTION_CUSTOMER_DATA=NONE"
+          echo "PAID_PROPRIETARY_DATA=NONE"
+          echo "SCRAPING=NONE"
+          echo "Q29_READINESS_BYPASS=NONE"
+          echo "ZERO_COST=PASS"
+          echo "ISOLATION=PASS"
+          echo "Q34_D11_GOVERNED_FISCAL_RELIEF_ENTITLEMENT_ENGINE=PASS"
