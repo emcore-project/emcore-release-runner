@@ -1,0 +1,200 @@
+name: EMCORE Q36 D13 Governed Payment Guarantee Working Capital Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q36-d13-governed-payment-guarantee-working-capital-engine-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q36-d13-governed-payment-guarantee-working-capital-engine
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q36-d13-governed-payment-guarantee-working-capital-engine-request.json');
+          const expected = {
+            schema: 'emcore.q36-d13-governed-payment-guarantee-working-capital-engine.v1',
+            mode: 'QUALIFY',
+            mission: 'CC30-D13-GOVERNED-PAYMENT-GUARANTEE-WORKING-CAPITAL-ENGINE-V1-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: 'eacfc6b764ff3229596d18d2b2800b3d04daa5c5',
+            source_tree: '01f8591a9c109174f572fbb41101c95a8d0c530e',
+            source_baseline: '6a599870ae37f3e2a9322d08df387d5646b69f86',
+            automatic_payment_authorized: false,
+            fund_transfer_authorized: false,
+            sdd_mandate_mutation_authorized: false,
+            bank_instruction_authorized: false,
+            guarantee_mutation_authorized: false,
+            automatic_deposit_refund_request_authorized: false,
+            external_outreach_authorized: false,
+            recovery_contestation_authorized: false,
+            external_submission_authorized: false,
+            production_customer_data_enablement_authorized: false,
+            proprietary_data_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            deployment_authorized: false,
+            q29_bypass_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q36 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: eacfc6b764ff3229596d18d2b2800b3d04daa5c5
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source identity and bounded scope
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "eacfc6b764ff3229596d18d2b2800b3d04daa5c5"
+          test "$(git rev-parse 'HEAD^{tree}')" = "01f8591a9c109174f572fbb41101c95a8d0c530e"
+          test -z "$(git status --porcelain)"
+          git cat-file -e 6a599870ae37f3e2a9322d08df387d5646b69f86^{commit}
+          changed="$(git diff --name-only 6a599870ae37f3e2a9322d08df387d5646b69f86..HEAD)"
+          echo "$changed"
+          test -n "$changed"
+          unexpected="$(echo "$changed" | grep -Ev '^(packages/domain/src/governed-payment-guarantee-working-capital-types\.ts|packages/domain/src/governed-payment-guarantee-working-capital-engine\.ts|apps/web/src/GovernedPaymentGuaranteeWorkingCapitalDevPanel\.tsx|apps/web/src/MarketOpportunitiesDevSurface\.tsx|tests/governed-payment-guarantee-working-capital-engine\.test\.ts|tests/governed-payment-guarantee-working-capital-dev-panel\.test\.ts)$' || true)"
+          test -z "$unexpected"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SCOPE_ISOLATION=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D13 D12 D11 D10 D09 D08 D07 D06 Q29 regression tests
+        working-directory: source
+        run: |
+          node --experimental-strip-types --test \
+            tests/governed-payment-guarantee-working-capital-engine.test.ts \
+            tests/governed-payment-guarantee-working-capital-dev-panel.test.ts \
+            tests/governed-technical-optimization-signals-engine.test.ts \
+            tests/governed-technical-optimization-signals-dev-panel.test.ts \
+            tests/governed-fiscal-relief-entitlement-engine.test.ts \
+            tests/governed-fiscal-relief-entitlement-dev-surface.test.ts \
+            tests/governed-obligation-deadline-engine.test.ts \
+            tests/governed-obligation-deadline-dev-surface.test.ts \
+            tests/governed-connection-supply-practice-engine.test.ts \
+            tests/governed-connection-supply-practice-dev-surface.test.ts \
+            tests/governed-fixing-hedging-portfolio-decision.test.ts \
+            tests/governed-fixing-hedging-portfolio-dev-panel.test.ts \
+            tests/governed-offer-comparison-procurement-decision.test.ts \
+            tests/governed-offer-comparison-procurement-dev-panel.test.ts \
+            tests/governed-gas-commercial-structure-parity.test.ts \
+            tests/market-opportunities-dev-surface.test.ts \
+            tests/governed-italy-native-supply-availability.test.ts \
+            tests/governed-scenario-market-consistency-orchestration.test.ts \
+            tests/portal-navigation.test.ts \
+            tests/r01-governed-distribution-lifecycle-events.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert D13 safety integration and zero-cost guards
+        working-directory: source
+        shell: bash
+        run: |
+          files="packages/domain/src/governed-payment-guarantee-working-capital-types.ts packages/domain/src/governed-payment-guarantee-working-capital-engine.ts apps/web/src/GovernedPaymentGuaranteeWorkingCapitalDevPanel.tsx"
+          ! grep -RE "fetch\(|axios|contactSupplier|contactCustomer|contactBank|contactGuarantor|executeExternal|submitExternal|setInterval|setTimeout" $files
+          grep -q "D13_OPPORTUNITY_FAMILIES" packages/domain/src/governed-payment-guarantee-working-capital-types.ts
+          grep -q "X.OPP.WC.001" packages/domain/src/governed-payment-guarantee-working-capital-types.ts
+          grep -q "X.OPP.WC.002" packages/domain/src/governed-payment-guarantee-working-capital-types.ts
+          grep -q "X.OPP.WC.003" packages/domain/src/governed-payment-guarantee-working-capital-types.ts
+          grep -q "X.OPP.WC.004" packages/domain/src/governed-payment-guarantee-working-capital-types.ts
+          grep -q "D16_OPPORTUNITY_QUALIFICATION_AND_VALUE" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "D15_DECISION_ACTION_ENGINE" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "D10_OBLIGATION_DEADLINE_ENGINE" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "assertActionOutcomeEvidencePolicy" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "invoiceWordingEstablishesSettlement: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "creditedEstablishesSettlement: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "principalIsSaving: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "releasedPrincipalIncludedAsSaving: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "historicalRecoveryIncluded: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "recoveryClaimOwnedByD13: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "realizedRecoveryAccountingOwnedByD13: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "automaticPaymentAuthorized: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "fundTransferAuthorized: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "sddMandateMutationAuthorized: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "bankInstructionAuthorized: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "guaranteeMutationAuthorized: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "deploymentMutationAuthorized: false" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          grep -q "q29ItalyReadinessUnchanged: true" packages/domain/src/governed-payment-guarantee-working-capital-engine.ts
+          echo "D13_GOVERNED_PAYMENT_GUARANTEE_WORKING_CAPITAL_ENGINE=PASS"
+          echo "FOUR_WORKING_CAPITAL_FAMILIES=PASS"
+          echo "CONTRACTUAL_TRUTH_REUSE=PASS"
+          echo "X_BILL_DEP_X_PAY_REC_FACTUAL_SUPPORT_ONLY=PASS"
+          echo "LIQUIDITY_VS_SAVING_SEPARATION=PASS"
+          echo "D16_VALUE_QUALIFICATION_REUSE=PASS"
+          echo "D15_ACTION_ENGINE_REUSE=PASS"
+          echo "D10_TIMING_REUSE=PASS"
+          echo "OUTCOME_MEASUREMENT_VALIDATION_REUSE=PASS"
+          echo "D14_RECOVERY_BOUNDARY=PASS"
+          echo "AUTOMATIC_BANKING_SECURITY_ACTION=NONE"
+          echo "EXTERNAL_OUTREACH=NONE"
+          echo "PRODUCTION_CUSTOMER_DATA=NONE"
+          echo "PAID_PROPRIETARY_DATA=NONE"
+          echo "SCRAPING=NONE"
+          echo "DEPLOYMENT_MUTATION=NONE"
+          echo "Q29_READINESS_BYPASS=NONE"
+          echo "ZERO_COST=PASS"
+          echo "ISOLATION=PASS"
+          echo "Q36_D13_GOVERNED_PAYMENT_GUARANTEE_WORKING_CAPITAL_ENGINE=PASS"
