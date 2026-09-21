@@ -31,7 +31,7 @@ jobs:
             mode: 'QUALIFY',
             mission: 'CC29-D10-GOVERNED-OBLIGATION-DEADLINE-DECISION-WINDOW-ENGINE-V1-001',
             source_repository: 'emcore-project/emcore',
-            source_commit: 'e9eb06ceb64aadd9cabb5cba40cc64186f39fc9f',
+            source_commit: 'ee398221ad62a73a89d8b114822e2b3444cb98a1',
             source_baseline: '8674507096fc4c0fa73133f723f12111b434df63',
             notification_delivery_authorized: false,
             external_execution_authorized: false,
@@ -54,7 +54,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: e9eb06ceb64aadd9cabb5cba40cc64186f39fc9f
+          ref: ee398221ad62a73a89d8b114822e2b3444cb98a1
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -64,7 +64,7 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "e9eb06ceb64aadd9cabb5cba40cc64186f39fc9f"
+          test "$(git rev-parse HEAD)" = "ee398221ad62a73a89d8b114822e2b3444cb98a1"
           test -z "$(git status --porcelain)"
           git cat-file -e 8674507096fc4c0fa73133f723f12111b434df63^{commit}
           changed="$(git diff --name-only 8674507096fc4c0fa73133f723f12111b434df63..HEAD)"
