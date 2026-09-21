@@ -31,7 +31,7 @@ jobs:
             mode: 'QUALIFY',
             mission: 'CC29-D11-GOVERNED-FISCAL-RELIEF-ENTITLEMENT-ENGINE-V1-001',
             source_repository: 'emcore-project/emcore',
-            source_commit: '1b148c502ea943cf9376baa5b23fd9a72bb83b08',
+            source_commit: '99203fdff51b618850a716d38f6354c32e7bf062',
             source_baseline: '66ea90b25ebfd55483f0724d3a9b6b0a3b2440ba',
             external_filing_authorized: false,
             customer_supplier_authority_outreach_authorized: false,
@@ -51,7 +51,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 1b148c502ea943cf9376baa5b23fd9a72bb83b08
+          ref: 99203fdff51b618850a716d38f6354c32e7bf062
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -61,7 +61,7 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "1b148c502ea943cf9376baa5b23fd9a72bb83b08"
+          test "$(git rev-parse HEAD)" = "99203fdff51b618850a716d38f6354c32e7bf062"
           test -z "$(git status --porcelain)"
           git cat-file -e 66ea90b25ebfd55483f0724d3a9b6b0a3b2440ba^{commit}
           changed="$(git diff --name-only 66ea90b25ebfd55483f0724d3a9b6b0a3b2440ba..HEAD)"
