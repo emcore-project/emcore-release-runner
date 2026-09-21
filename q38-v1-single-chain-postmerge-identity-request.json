@@ -1,0 +1,11 @@
+{
+  "schema": "emcore.q38-v1-single-chain-postmerge-identity.v1",
+  "mode": "VERIFY_POSTMERGE_IDENTITY",
+  "mission": "CC32-V1-SINGLE-CHAIN-INTEGRATION-PROOF-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "3f5063c1bad543fc48347c472148f024b29dd583",
+  "expected_tree": "799461fc64a77133a607c3b8bc7f940341361630",
+  "qualified_tree": "799461fc64a77133a607c3b8bc7f940341361630",
+  "deployment_authorized": false,
+  "q29_bypass_authorized": false
+}
