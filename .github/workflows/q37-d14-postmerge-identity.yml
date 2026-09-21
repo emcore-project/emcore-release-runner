@@ -25,7 +25,7 @@ jobs:
           const expected = {
             schema: 'emcore.q37-d14-postmerge-identity.v1',
             mode: 'VERIFY_POSTMERGE_IDENTITY',
-            mission: 'CC30-D14-GOVERNED-PAYMENT-GUARANTEE-WORKING-CAPITAL-ENGINE-V1-001',
+            mission: 'CC31-D14-GOVERNED-RECOVERY-REMEDIATION-CONTESTATION-ENGINE-V1-001',
             source_repository: 'emcore-project/emcore',
             source_commit: '4ce225dbbaee00ccd7f42dca228aa5c81c40b125',
             expected_tree: '52b9e3247d0437a5fcbe2d5adc914e6bd66b614c',
