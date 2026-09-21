@@ -1,0 +1,20 @@
+{
+  "schema": "emcore.q37-d14-governed-recovery-remediation-contestation-engine.v1",
+  "mode": "QUALIFY",
+  "mission": "CC31-D14-GOVERNED-RECOVERY-REMEDIATION-CONTESTATION-ENGINE-V1-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "fad1b2ccb85f590e667ea4ece3cc3df6e159c3e1",
+  "source_tree": "89bdbbf975e553a8adc6740867246847e442ac13",
+  "source_baseline": "b50de2c6ae2dcb2c0cfcfbc709f6d4a296cd03d0",
+  "external_outreach_authorized": false,
+  "claim_submission_authorized": false,
+  "refund_request_authorized": false,
+  "bank_action_authorized": false,
+  "external_filing_authorized": false,
+  "production_customer_data_enablement_authorized": false,
+  "proprietary_data_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "deployment_authorized": false,
+  "q29_bypass_authorized": false
+}
