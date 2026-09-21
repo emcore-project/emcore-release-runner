@@ -1,0 +1,17 @@
+{
+  "schema": "emcore.cc33-pilot-alignment.v1",
+  "mode": "DEPLOY_ACCEPT",
+  "source_repository": "emcore-project/emcore",
+  "release_commit": "3f5063c1bad543fc48347c472148f024b29dd583",
+  "release_tree": "799461fc64a77133a607c3b8bc7f940341361630",
+  "expected_open_pr_count": 0,
+  "prior_live_commit": "9441f5af2fd89de334cde7f9d465eb97bdc8fe93",
+  "target_worker": "emcore-web-pilot",
+  "target_config": "apps/web/wrangler.pilot.jsonc",
+  "pilot_base_url": "https://emcore-web-pilot.emcore-project.workers.dev",
+  "pilot_bootstrap_url": "https://qogvvvqqkipmstajvhzl.supabase.co/functions/v1/emcore-live-pilot-smoke-bootstrap",
+  "zero_cost_required": true,
+  "customer_data_allowed": false,
+  "ingestion_must_remain_disabled": true,
+  "deployment_authorized": true
+}
