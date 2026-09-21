@@ -31,7 +31,7 @@ jobs:
             mode: 'QUALIFY',
             mission: 'CC28-D08-GOVERNED-FIXING-HEDGING-PORTFOLIO-DECISION-V1-001',
             source_repository: 'emcore-project/emcore',
-            source_commit: 'ec751abaf5a986ef8a1752f7b0dd9c84740f9d10',
+            source_commit: '3144af4fae6e3d0f8ccfe2004ff25a2a3893dc49',
             source_baseline: 'a08dbcabe2d0c29133e3ad4ddd1fc4de7f63b94c',
             fixing_request_transmission_authorized: false,
             supplier_communication_authorized: false,
@@ -55,7 +55,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: ec751abaf5a986ef8a1752f7b0dd9c84740f9d10
+          ref: 3144af4fae6e3d0f8ccfe2004ff25a2a3893dc49
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -65,7 +65,7 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "ec751abaf5a986ef8a1752f7b0dd9c84740f9d10"
+          test "$(git rev-parse HEAD)" = "3144af4fae6e3d0f8ccfe2004ff25a2a3893dc49"
           test -z "$(git status --porcelain)"
           git cat-file -e a08dbcabe2d0c29133e3ad4ddd1fc4de7f63b94c^{commit}
           changed="$(git diff --name-only a08dbcabe2d0c29133e3ad4ddd1fc4de7f63b94c..HEAD)"
