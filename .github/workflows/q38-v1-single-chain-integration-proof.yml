@@ -31,8 +31,8 @@ jobs:
             mode: 'QUALIFY',
             mission: 'CC32-V1-SINGLE-CHAIN-INTEGRATION-PROOF-001',
             source_repository: 'emcore-project/emcore',
-            source_commit: 'f253bf139bc485e215853c4cb145ed20c066c997',
-            source_tree: '2fb348410708853df55e9e917a120d39812dd28b',
+            source_commit: '66fa78ac8c597edfdb20545a5144ea2418d2af6c',
+            source_tree: '9a8e5e0af0c18cb33159df54b2e0e055d02bbfb9',
             source_baseline: '4ce225dbbaee00ccd7f42dca228aa5c81c40b125',
             external_execution_authorized: false,
             production_customer_data_authorized: false,
@@ -51,7 +51,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: f253bf139bc485e215853c4cb145ed20c066c997
+          ref: 66fa78ac8c597edfdb20545a5144ea2418d2af6c
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -61,8 +61,8 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "f253bf139bc485e215853c4cb145ed20c066c997"
-          test "$(git rev-parse 'HEAD^{tree}')" = "2fb348410708853df55e9e917a120d39812dd28b"
+          test "$(git rev-parse HEAD)" = "66fa78ac8c597edfdb20545a5144ea2418d2af6c"
+          test "$(git rev-parse 'HEAD^{tree}')" = "9a8e5e0af0c18cb33159df54b2e0e055d02bbfb9"
           test -z "$(git status --porcelain)"
           git cat-file -e 4ce225dbbaee00ccd7f42dca228aa5c81c40b125^{commit}
           changed="$(git diff --name-only 4ce225dbbaee00ccd7f42dca228aa5c81c40b125..HEAD)"
