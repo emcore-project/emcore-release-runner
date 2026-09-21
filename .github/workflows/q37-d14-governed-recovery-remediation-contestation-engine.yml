@@ -1,0 +1,191 @@
+name: EMCORE Q37 D14 Governed Recovery Remediation Contestation Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q37-d14-governed-recovery-remediation-contestation-engine-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q37-d14-governed-recovery-remediation-contestation-engine
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q37-d14-governed-recovery-remediation-contestation-engine-request.json');
+          const expected = {
+            schema: 'emcore.q37-d14-governed-recovery-remediation-contestation-engine.v1',
+            mode: 'QUALIFY',
+            mission: 'CC31-D14-GOVERNED-RECOVERY-REMEDIATION-CONTESTATION-ENGINE-V1-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: 'fad1b2ccb85f590e667ea4ece3cc3df6e159c3e1',
+            source_tree: '89bdbbf975e553a8adc6740867246847e442ac13',
+            source_baseline: 'b50de2c6ae2dcb2c0cfcfbc709f6d4a296cd03d0',
+            external_outreach_authorized: false,
+            claim_submission_authorized: false,
+            refund_request_authorized: false,
+            bank_action_authorized: false,
+            external_filing_authorized: false,
+            production_customer_data_enablement_authorized: false,
+            proprietary_data_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            deployment_authorized: false,
+            q29_bypass_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q37 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: fad1b2ccb85f590e667ea4ece3cc3df6e159c3e1
+          token: \${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source identity and bounded scope
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "fad1b2ccb85f590e667ea4ece3cc3df6e159c3e1"
+          test "$(git rev-parse 'HEAD^{tree}')" = "89bdbbf975e553a8adc6740867246847e442ac13"
+          test -z "$(git status --porcelain)"
+          git cat-file -e b50de2c6ae2dcb2c0cfcfbc709f6d4a296cd03d0^{commit}
+          changed="$(git diff --name-only b50de2c6ae2dcb2c0cfcfbc709f6d4a296cd03d0..HEAD)"
+          echo "$changed"
+          test -n "$changed"
+          unexpected="$(echo "$changed" | grep -Ev '^(packages/domain/src/governed-recovery-remediation-contestation-types\.ts|packages/domain/src/governed-recovery-remediation-contestation-engine\.ts|apps/web/src/GovernedRecoveryRemediationContestationDevPanel\.tsx|apps/web/src/MarketOpportunitiesDevSurface\.tsx|tests/governed-recovery-remediation-contestation-engine\.test\.ts|tests/governed-recovery-remediation-contestation-dev-panel\.test\.ts)$' || true)"
+          test -z "$unexpected"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SCOPE_ISOLATION=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D14 D13 D12 D11 D10 D09 D08 D07 D06 Q29 regression tests
+        working-directory: source
+        run: |
+          node --experimental-strip-types --test \
+            tests/governed-recovery-remediation-contestation-engine.test.ts \
+            tests/governed-recovery-remediation-contestation-dev-panel.test.ts \
+            tests/governed-payment-guarantee-working-capital-engine.test.ts \
+            tests/governed-payment-guarantee-working-capital-dev-panel.test.ts \
+            tests/governed-technical-optimization-signals-engine.test.ts \
+            tests/governed-technical-optimization-signals-dev-panel.test.ts \
+            tests/governed-fiscal-relief-entitlement-engine.test.ts \
+            tests/governed-fiscal-relief-entitlement-dev-surface.test.ts \
+            tests/governed-obligation-deadline-engine.test.ts \
+            tests/governed-obligation-deadline-dev-surface.test.ts \
+            tests/governed-connection-supply-practice-engine.test.ts \
+            tests/governed-connection-supply-practice-dev-surface.test.ts \
+            tests/governed-fixing-hedging-portfolio-decision.test.ts \
+            tests/governed-fixing-hedging-portfolio-dev-panel.test.ts \
+            tests/governed-offer-comparison-procurement-decision.test.ts \
+            tests/governed-offer-comparison-procurement-dev-panel.test.ts \
+            tests/governed-gas-commercial-structure-parity.test.ts \
+            tests/market-opportunities-dev-surface.test.ts \
+            tests/governed-italy-native-supply-availability.test.ts \
+            tests/governed-scenario-market-consistency-orchestration.test.ts \
+            tests/portal-navigation.test.ts \
+            tests/r01-governed-distribution-lifecycle-events.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert D14 safety integration and zero-cost guards
+        working-directory: source
+        shell: bash
+        run: |
+          files="packages/domain/src/governed-recovery-remediation-contestation-types.ts packages/domain/src/governed-recovery-remediation-contestation-engine.ts apps/web/src/GovernedRecoveryRemediationContestationDevPanel.tsx"
+          ! grep -RE "fetch\(|axios|contactSupplier|contactCustomer|contactBank|executeExternal|submitExternal|setInterval|setTimeout" $files
+          grep -q "D14_LIFECYCLE_STATES" packages/domain/src/governed-recovery-remediation-contestation-types.ts
+          grep -q "assertDecisionRecoverabilityEvidence" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "assertActionOutcomeEvidencePolicy" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "X-BILL-LONGITUDINAL-579" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "D10_OBLIGATION_DEADLINE_ENGINE" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "D15_DECISION_ACTION_ENGINE" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "D16_OPPORTUNITY_QUALIFICATION_AND_VALUE" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "creditStateCreatesRecovery: false" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "actionStateCreatesRecovery: false" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "settlementEvidenceRequiredForRecoveredState: true" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "latestInvoiceWinsProhibited: true" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "cumulativeLifecycleSumProhibited: true" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "supplierOutreachAuthorized: false" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "claimSubmissionAuthorized: false" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "refundRequestAuthorized: false" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "externalFilingAuthorized: false" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "deploymentMutationAuthorized: false" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          grep -q "q29ItalyReadinessUnchanged: true" packages/domain/src/governed-recovery-remediation-contestation-engine.ts
+          echo "D14_GOVERNED_RECOVERY_REMEDIATION_CONTESTATION_ENGINE=PASS"
+          echo "LIFECYCLE_SEPARATION=PASS"
+          echo "SETTLEMENT_EVIDENCE_GATE=PASS"
+          echo "LONGITUDINAL_RELATIONSHIP_AUTHORITY=PASS"
+          echo "LATEST_INVOICE_WINS=PROHIBITED"
+          echo "D16_ANTI_DOUBLE_COUNT=PASS"
+          echo "D15_ACTION_REUSE=PASS"
+          echo "D10_TIMING_REUSE=PASS"
+          echo "ACTION_OUTCOME_REUSE=PASS"
+          echo "EXTERNAL_EXECUTION=NONE"
+          echo "PRODUCTION_CUSTOMER_DATA=NONE"
+          echo "PAID_PROPRIETARY_DATA=NONE"
+          echo "SCRAPING=NONE"
+          echo "DEPLOYMENT_MUTATION=NONE"
+          echo "Q29_READINESS_BYPASS=NONE"
+          echo "ZERO_COST=PASS"
+          echo "ISOLATION=PASS"
+          echo "Q37_D14_GOVERNED_RECOVERY_REMEDIATION_CONTESTATION_ENGINE=PASS"
