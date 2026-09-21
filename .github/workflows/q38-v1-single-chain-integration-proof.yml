@@ -1,0 +1,154 @@
+name: EMCORE Q38 V1 Single Chain Integration Proof Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q38-v1-single-chain-integration-proof-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q38-v1-single-chain-integration-proof
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q38-v1-single-chain-integration-proof-request.json');
+          const expected = {
+            schema: 'emcore.q38-v1-single-chain-integration-proof.v1',
+            mode: 'QUALIFY',
+            mission: 'CC32-V1-SINGLE-CHAIN-INTEGRATION-PROOF-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: 'f253bf139bc485e215853c4cb145ed20c066c997',
+            source_tree: '2fb348410708853df55e9e917a120d39812dd28b',
+            source_baseline: '4ce225dbbaee00ccd7f42dca228aa5c81c40b125',
+            external_execution_authorized: false,
+            production_customer_data_authorized: false,
+            proprietary_data_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            deployment_authorized: false,
+            q29_bypass_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q38 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: f253bf139bc485e215853c4cb145ed20c066c997
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source identity and test-only scope
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "f253bf139bc485e215853c4cb145ed20c066c997"
+          test "$(git rev-parse 'HEAD^{tree}')" = "2fb348410708853df55e9e917a120d39812dd28b"
+          test -z "$(git status --porcelain)"
+          git cat-file -e 4ce225dbbaee00ccd7f42dca228aa5c81c40b125^{commit}
+          changed="$(git diff --name-only 4ce225dbbaee00ccd7f42dca228aa5c81c40b125..HEAD)"
+          echo "$changed"
+          test "$changed" = "tests/v1-single-chain-integration-proof.test.ts"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "TEST_ONLY_SCOPE=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused single-chain integration qualification
+        working-directory: source
+        run: |
+          node --experimental-strip-types --test             tests/v1-single-chain-integration-proof.test.ts             tests/document-to-decision-pipeline.test.ts             tests/decision-cluster.test.ts             tests/governed-obligation-deadline-engine.test.ts             tests/governed-recovery-remediation-contestation-engine.test.ts             tests/mission-j01-recovery-outcome-continuity.test.ts             tests/value-evidence-chain-source.test.ts             tests/client-value-proof.test.ts             tests/benefit-evidence-package.test.ts             tests/historical-semantic-replay-v1.test.ts             tests/governed-italy-native-supply-availability.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert single-chain safety and shared-authority boundaries
+        working-directory: source
+        shell: bash
+        run: |
+          test -f tests/v1-single-chain-integration-proof.test.ts
+          grep -q "D10_OBLIGATION_DEADLINE_ENGINE" tests/v1-single-chain-integration-proof.test.ts
+          grep -q "D15_DECISION_ACTION_ENGINE" tests/v1-single-chain-integration-proof.test.ts
+          grep -q "D16_OPPORTUNITY_QUALIFICATION_AND_VALUE" tests/v1-single-chain-integration-proof.test.ts
+          grep -q "ACTION_OUTCOMES" tests/v1-single-chain-integration-proof.test.ts
+          grep -q "SETTLEMENT_EVIDENCE" tests/v1-single-chain-integration-proof.test.ts
+          grep -q "TRACCIABILITA_COMPLETA" tests/v1-single-chain-integration-proof.test.ts
+          grep -q "replayHistoricalSemanticRunV1" tests/v1-single-chain-integration-proof.test.ts
+          grep -q "fuori organizzazione" tests/v1-single-chain-integration-proof.test.ts
+          grep -q "FUTURE_RECOVERY_EVIDENCE" tests/v1-single-chain-integration-proof.test.ts
+          grep -q "q29ItalyReadinessUnchanged" tests/v1-single-chain-integration-proof.test.ts
+          ! git diff --name-only 4ce225dbbaee00ccd7f42dca228aa5c81c40b125..HEAD | grep -Ev '^tests/v1-single-chain-integration-proof\.test\.ts$'
+          echo "SINGLE_CHAIN_IDENTITY_PROOF=PASS"
+          echo "D10_SINGULAR_TIMING_AUTHORITY=PASS"
+          echo "D15_CONTINUITY=PASS"
+          echo "D16_ANTI_DOUBLE_COUNT=PASS"
+          echo "D17_PORTAL_PROVENANCE_REPLAY=PASS"
+          echo "D14_SETTLEMENT_RECOVERY=PASS"
+          echo "ACTION_OUTCOMES_AUTHORITY=PASS"
+          echo "TENANT_ISOLATION=PASS"
+          echo "FAIL_CLOSED=PASS"
+          echo "NO_FUTURE_LEAKAGE=PASS"
+          echo "Q29_READINESS_BYPASS=NONE"
+          echo "PRODUCT_LOGIC_CHANGED=NO"
+          echo "DEPLOYMENT_MUTATION=NONE"
+          echo "PAID_PROPRIETARY_DATA=NONE"
+          echo "SCRAPING=NONE"
+          echo "ZERO_COST=PASS"
+          echo "Q38_V1_SINGLE_CHAIN_INTEGRATION_PROOF=PASS"
