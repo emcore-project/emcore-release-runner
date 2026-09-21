@@ -31,7 +31,7 @@ jobs:
             mode: 'QUALIFY',
             mission: 'CC28-D09-GOVERNED-CONNECTION-SUPPLY-PRACTICE-ENGINE-V1-001',
             source_repository: 'emcore-project/emcore',
-            source_commit: '63e99e1217e9645070f48b40a9cf19a1487e662f',
+            source_commit: '55ec684f620c7c52c38354581676afcc589b6eb2',
             source_baseline: 'ddde965bb6860cfe617a1541a701bd43d9bc1f34',
             external_submission_authorized: false,
             seller_distributor_impersonation_authorized: false,
@@ -53,7 +53,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 63e99e1217e9645070f48b40a9cf19a1487e662f
+          ref: 55ec684f620c7c52c38354581676afcc589b6eb2
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -63,13 +63,13 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "63e99e1217e9645070f48b40a9cf19a1487e662f"
+          test "$(git rev-parse HEAD)" = "55ec684f620c7c52c38354581676afcc589b6eb2"
           test -z "$(git status --porcelain)"
           git cat-file -e ddde965bb6860cfe617a1541a701bd43d9bc1f34^{commit}
           changed="$(git diff --name-only ddde965bb6860cfe617a1541a701bd43d9bc1f34..HEAD)"
           echo "$changed"
           test -n "$changed"
-          unexpected="$(echo "$changed" | grep -Ev '^(packages/domain/src/governed-connection-supply-practice-engine\.ts|apps/web/src/GovernedConnectionSupplyPracticeDevSurface\.tsx|apps/web/src/CustomerPortal\.tsx|apps/web/src/portal-navigation\.ts|tests/governed-connection-supply-practice-engine\.test\.ts|tests/governed-connection-supply-practice-dev-surface\.test\.ts)$' || true)"
+          unexpected="$(echo "$changed" | grep -Ev '^(packages/domain/src/governed-connection-supply-practice-engine\.ts|apps/web/src/GovernedConnectionSupplyPracticeDevSurface\.tsx|apps/web/src/CustomerPortal\.tsx|apps/web/src/portal-navigation\.ts|tests/governed-connection-supply-practice-engine\.test\.ts|tests/governed-connection-supply-practice-dev-surface\.test\.ts|scripts/browser-acceptance\.mjs)$' || true)"
           test -z "$unexpected"
           echo "SOURCE_HEAD=$(git rev-parse HEAD)"
           echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
