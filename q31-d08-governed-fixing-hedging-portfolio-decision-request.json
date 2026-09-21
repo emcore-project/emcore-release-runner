@@ -1,0 +1,20 @@
+{
+  "schema": "emcore.q31-d08-governed-fixing-hedging-portfolio-decision.v1",
+  "mode": "QUALIFY",
+  "mission": "CC28-D08-GOVERNED-FIXING-HEDGING-PORTFOLIO-DECISION-V1-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "ec751abaf5a986ef8a1752f7b0dd9c84740f9d10",
+  "source_baseline": "a08dbcabe2d0c29133e3ad4ddd1fc4de7f63b94c",
+  "fixing_request_transmission_authorized": false,
+  "supplier_communication_authorized": false,
+  "trading_execution_authorized": false,
+  "hedge_execution_authorized": false,
+  "signature_execution_authorized": false,
+  "contractual_commitment_authorized": false,
+  "proprietary_market_access_authorized": false,
+  "paid_feed_authorized": false,
+  "scraping_authorized": false,
+  "deployment_authorized": false,
+  "automatic_runtime_fetching_authorized": false,
+  "q29_bypass_authorized": false
+}
