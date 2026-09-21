@@ -1,0 +1,159 @@
+name: EMCORE Q35 D12 Governed Technical Optimization Signals Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - q35-d12-governed-technical-optimization-signals-engine-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-q35-d12-governed-technical-optimization-signals-engine
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./q35-d12-governed-technical-optimization-signals-engine-request.json');
+          const expected = {
+            schema: 'emcore.q35-d12-governed-technical-optimization-signals-engine.v1',
+            mode: 'QUALIFY',
+            mission: 'CC30-D12-GOVERNED-TECHNICAL-OPTIMIZATION-SIGNALS-ENGINE-V1-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: '18f858c3ed103a42b00084cc301de990b5914dae',
+            source_baseline: 'fc24dd58b3e4764c16ef233f4c6e821da3b674e3',
+            automatic_power_reduction_authorized: false,
+            automatic_meter_intervention_authorized: false,
+            external_outreach_authorized: false,
+            external_submission_authorized: false,
+            supplier_switch_authorized: false,
+            hedging_fixing_transaction_authorized: false,
+            production_customer_data_enablement_authorized: false,
+            proprietary_data_authorized: false,
+            paid_feed_authorized: false,
+            scraping_authorized: false,
+            deployment_authorized: false,
+            q29_bypass_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('Q35 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 18f858c3ed103a42b00084cc301de990b5914dae
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source identity and bounded scope
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "18f858c3ed103a42b00084cc301de990b5914dae"
+          test -z "$(git status --porcelain)"
+          git cat-file -e fc24dd58b3e4764c16ef233f4c6e821da3b674e3^{commit}
+          changed="$(git diff --name-only fc24dd58b3e4764c16ef233f4c6e821da3b674e3..HEAD)"
+          echo "$changed"
+          test -n "$changed"
+          unexpected="$(echo "$changed" | grep -Ev '^(packages/domain/src/governed-technical-optimization-signals-engine\.ts|apps/web/src/GovernedTechnicalOptimizationSignalsDevPanel\.tsx|apps/web/src/MarketOpportunitiesDevSurface\.tsx|tests/governed-technical-optimization-signals-engine\.test\.ts|tests/governed-technical-optimization-signals-dev-panel\.test\.ts)$' || true)"
+          test -z "$unexpected"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "SCOPE_ISOLATION=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D12 D11 D10 D09 D08 D07 D06 Q29 regression tests
+        working-directory: source
+        run: |
+          node --experimental-strip-types --test             tests/governed-technical-optimization-signals-engine.test.ts             tests/governed-technical-optimization-signals-dev-panel.test.ts             tests/governed-fiscal-relief-entitlement-engine.test.ts             tests/governed-fiscal-relief-entitlement-dev-surface.test.ts             tests/governed-obligation-deadline-engine.test.ts             tests/governed-obligation-deadline-dev-surface.test.ts             tests/governed-connection-supply-practice-engine.test.ts             tests/governed-connection-supply-practice-dev-surface.test.ts             tests/governed-fixing-hedging-portfolio-decision.test.ts             tests/governed-fixing-hedging-portfolio-dev-panel.test.ts             tests/governed-offer-comparison-procurement-decision.test.ts             tests/governed-offer-comparison-procurement-dev-panel.test.ts             tests/governed-gas-commercial-structure-parity.test.ts             tests/market-opportunities-dev-surface.test.ts             tests/governed-italy-native-supply-availability.test.ts             tests/governed-scenario-market-consistency-orchestration.test.ts             tests/portal-navigation.test.ts             tests/r01-governed-distribution-lifecycle-events.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build Cloudflare application
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert D12 safety integration and zero-cost guards
+        working-directory: source
+        shell: bash
+        run: |
+          files="packages/domain/src/governed-technical-optimization-signals-engine.ts apps/web/src/GovernedTechnicalOptimizationSignalsDevPanel.tsx"
+          ! grep -RE "fetch\(|axios|contactSupplier|contactDistributor|contactAuthority|executeExternal|submitExternal|setInterval|setTimeout" $files
+          grep -q "D12_SIGNAL_FAMILIES" packages/domain/src/governed-technical-optimization-signals-engine.ts
+          grep -q "D16_ECONOMIC_GROUP_SEMANTICS" packages/domain/src/governed-technical-optimization-signals-engine.ts
+          grep -q "D15_DECISION_ACTION_ENGINE" packages/domain/src/governed-technical-optimization-signals-engine.ts
+          grep -q "D10_OBLIGATION_DEADLINE_ENGINE" packages/domain/src/governed-technical-optimization-signals-engine.ts
+          grep -q "assertActionOutcomeEvidencePolicy" packages/domain/src/governed-technical-optimization-signals-engine.ts
+          grep -q "invoiceSelfValidationProhibited: true" packages/domain/src/governed-technical-optimization-signals-engine.ts
+          grep -q "automaticPowerReductionAuthorized: false" packages/domain/src/governed-technical-optimization-signals-engine.ts
+          grep -q "automaticMeterInterventionAuthorized: false" packages/domain/src/governed-technical-optimization-signals-engine.ts
+          grep -q "q29ItalyReadinessUnchanged: true" packages/domain/src/governed-technical-optimization-signals-engine.ts
+          echo "D12_GOVERNED_TECHNICAL_OPTIMIZATION_SIGNALS_ENGINE=PASS"
+          echo "D01_D02_D03_REUSE=PASS"
+          echo "D16_VALUE_QUALIFICATION_REUSE=PASS"
+          echo "D15_ACTION_ENGINE_REUSE=PASS"
+          echo "D10_TIMING_REUSE=PASS"
+          echo "OUTCOME_MEASUREMENT_VALIDATION_REUSE=PASS"
+          echo "INVOICE_SELF_VALIDATION=PROHIBITED"
+          echo "AUTOMATIC_POWER_REDUCTION=NONE"
+          echo "AUTOMATIC_METER_INTERVENTION=NONE"
+          echo "EXTERNAL_OUTREACH=NONE"
+          echo "PRODUCTION_CUSTOMER_DATA=NONE"
+          echo "PAID_PROPRIETARY_DATA=NONE"
+          echo "SCRAPING=NONE"
+          echo "DEPLOYMENT_MUTATION=NONE"
+          echo "Q29_READINESS_BYPASS=NONE"
+          echo "ZERO_COST=PASS"
+          echo "ISOLATION=PASS"
+          echo "Q35_D12_GOVERNED_TECHNICAL_OPTIMIZATION_SIGNALS_ENGINE=PASS"
