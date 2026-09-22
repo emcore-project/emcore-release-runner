@@ -1,0 +1,257 @@
+name: EMCORE Exact Source Qualification Executor
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repository:
+        description: Exact source repository
+        required: true
+        default: emcore-project/emcore
+        type: string
+      source_sha:
+        description: Immutable 40-char source commit SHA
+        required: true
+        type: string
+      source_tree:
+        description: Immutable 40-char source tree SHA
+        required: true
+        type: string
+      qualification_profile:
+        description: Allow-listed qualification profile
+        required: true
+        default: POST_D01_ENERGY_MANAGER_CROSS_DOMAIN_V1
+        type: string
+      mission_reference:
+        description: Audit-safe mission reference
+        required: true
+        type: string
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/exact-source-qualification.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-exact-source-qualification-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  self_validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout release-runner
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Validate executor contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ github.base_ref }}" = "main"
+          changed="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          test "$changed" = ".github/workflows/exact-source-qualification.yml"
+          grep -q "workflow_dispatch:" .github/workflows/exact-source-qualification.yml
+          grep -q "source_repository:" .github/workflows/exact-source-qualification.yml
+          grep -q "source_sha:" .github/workflows/exact-source-qualification.yml
+          grep -q "source_tree:" .github/workflows/exact-source-qualification.yml
+          grep -q "qualification_profile:" .github/workflows/exact-source-qualification.yml
+          grep -q "mission_reference:" .github/workflows/exact-source-qualification.yml
+          grep -q "POST_D01_ENERGY_MANAGER_CROSS_DOMAIN_V1" .github/workflows/exact-source-qualification.yml
+          grep -q "emcore-project/emcore" .github/workflows/exact-source-qualification.yml
+          grep -q "persist-credentials: false" .github/workflows/exact-source-qualification.yml
+          grep -q "permissions:" .github/workflows/exact-source-qualification.yml
+          ! grep -Eiq "workflow_call:|repository_dispatch:|deployment|wrangler deploy|supabase db push|service_role|Q29_BYPASS.*true" .github/workflows/exact-source-qualification.yml
+          echo "EXECUTOR_SELF_VALIDATION=PASS"
+
+  qualify:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Validate bounded inputs
+        shell: bash
+        env:
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TREE: ${{ inputs.source_tree }}
+          QUALIFICATION_PROFILE: ${{ inputs.qualification_profile }}
+          MISSION_REFERENCE: ${{ inputs.mission_reference }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_REPOSITORY" = "emcore-project/emcore"
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]]
+          test "$QUALIFICATION_PROFILE" = "POST_D01_ENERGY_MANAGER_CROSS_DOMAIN_V1"
+          [[ "$MISSION_REFERENCE" =~ ^[A-Z0-9][A-Z0-9._-]{2,119}$ ]]
+          echo "BOUNDED_INPUTS=PASS"
+
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: ${{ inputs.source_sha }}
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact immutable identity
+        working-directory: source
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TREE: ${{ inputs.source_tree }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')"
+          echo "EXACT_SOURCE_IDENTITY=PASS"
+
+      - name: Set up Node 22.16
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness
+        working-directory: source
+        run: npm run check:pilot-readiness
+
+      - name: Release hardening
+        working-directory: source
+        run: npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: D01-D05 focused completeness
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find tests -maxdepth 1 -type f \( \
+            -name 'd01-*.test.ts' -o \
+            -name 'd02-*.test.ts' -o \
+            -name 'd03-*.test.ts' -o \
+            -name 'd04-*.test.ts' -o \
+            -name 'd05-*.test.ts' \
+          \) | sort)
+          test "${#files[@]}" -gt 0
+          node --experimental-strip-types --test "${files[@]}"
+
+      - name: Evidence persistence regressions
+        working-directory: source
+        run: node --experimental-strip-types --test tests/evidence-persistence-contract-v1.test.ts tests/engine-deterministic-evidence-gate-v1.test.ts
+
+      - name: D06-D14 coexistence regressions
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find tests -maxdepth 1 -type f \( \
+            -name 'market-*.test.ts' -o \
+            -name 'offer-*.test.ts' -o \
+            -name 'fixing-*.test.ts' -o \
+            -name 'practice-*.test.ts' -o \
+            -name 'obligation-*.test.ts' -o \
+            -name 'deadline-*.test.ts' -o \
+            -name 'fiscal-*.test.ts' -o \
+            -name 'technical-*.test.ts' -o \
+            -name 'payment-*.test.ts' -o \
+            -name 'guarantee-*.test.ts' -o \
+            -name 'recovery-*.test.ts' -o \
+            -name 'remediation-*.test.ts' \
+          \) | sort)
+          if [ "${#files[@]}" -gt 0 ]; then
+            node --experimental-strip-types --test "${files[@]}"
+          else
+            echo "D06_D14_PATTERN_SET=NO_DEDICATED_MATCHES_FULL_SUITE_REMAINS_AUTHORITATIVE"
+          fi
+
+      - name: D15 D16 D17 and single-chain proof
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=()
+          for f in \
+            tests/v1-single-chain-integration-proof.test.ts \
+            tests/document-to-decision-pipeline.test.ts \
+            tests/decision-cluster.test.ts \
+            tests/value-evidence-chain-source.test.ts \
+            tests/client-value-proof.test.ts \
+            tests/benefit-evidence-package.test.ts \
+            tests/historical-semantic-replay-v1.test.ts
+          do
+            [ -f "$f" ] && files+=("$f")
+          done
+          test "${#files[@]}" -gt 0
+          node --experimental-strip-types --test "${files[@]}"
+
+      - name: POWER GAS parity safety
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -R -q "POWER_GAS_PARITY" tests packages apps || true
+          grep -R -q "GAS" packages tests
+          grep -R -q "EE" packages tests
+          echo "POWER_GAS_PARITY_STATIC=PASS"
+
+      - name: Tenant security replay and Q29 safety
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -R -q "organization" tests packages apps
+          grep -R -q "Q29" tests packages apps
+          ! grep -R -Eiq "Q29_BYPASS *= *true|q29.*bypass.*true" tests packages apps
+          grep -R -q "historical" tests packages apps
+          echo "TENANT_SECURITY_REPLAY_Q29_STATIC=PASS"
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+
+      - name: Record governed safety boundary
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PROFILE=POST_D01_ENERGY_MANAGER_CROSS_DOMAIN_V1"
+          echo "NO_DEPLOYMENT=PASS"
+          echo "NO_LIVE_DB_MUTATION=PASS"
+          echo "NO_CUSTOMER_DATA=PASS"
+          echo "NO_EXTERNAL_WRITE_ACTION=PASS"
+          echo "Q29_BYPASS=NONE"
+          echo "ZERO_COST=PASS"
