@@ -1,0 +1,213 @@
+name: EMCORE CC40 Clean PILOT Current-Main Alignment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - cc40-clean-pilot-alignment-request.json
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: emcore-cc40-clean-pilot-alignment
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-accept:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout release-control repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+
+      - name: Validate governed request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('cc40-clean-pilot-alignment-request.json','utf8'));
+          const required={
+            schema:'emcore.cc40-clean-pilot-alignment.v1',
+            mode:'DEPLOY_ACCEPT',
+            source_repository:'emcore-project/emcore',
+            release_commit:'ca224673f3a94227a85ba1303a420a18b726673a',
+            release_tree:'3f1d9df39226ad6a3849a2971adc131340de86ae',
+            expected_open_pr_count:0,
+            prior_live_commit:'7032662079be0be02d3ab78aa535aa3c3cfde85a',
+            target_worker:'emcore-web-pilot',
+            target_config:'apps/web/wrangler.pilot.jsonc',
+            pilot_base_url:'https://emcore-web-pilot.emcore-project.workers.dev',
+            pilot_bootstrap_url:'https://qogvvvqqkipmstajvhzl.supabase.co/functions/v1/emcore-live-pilot-smoke-bootstrap',
+            zero_cost_required:true,
+            customer_data_allowed:false,
+            ingestion_must_remain_disabled:true,
+            application_surface_mode:'PILOT',
+            deployment_authorized:true
+          };
+          for(const [k,v] of Object.entries(required)) if(r[k]!==v) throw new Error('request mismatch for '+k);
+          NODE
+
+      - name: Require governed secrets
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$EMCORE_SOURCE_TOKEN"
+          test -n "$CLOUDFLARE_API_TOKEN"
+
+      - name: Checkout exact private EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: ca224673f3a94227a85ba1303a420a18b726673a
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source identity and zero open PRs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          cd source
+          test "$(git rev-parse HEAD)" = "ca224673f3a94227a85ba1303a420a18b726673a"
+          test "$(git rev-parse 'HEAD^{tree}')" = "3f1d9df39226ad6a3849a2971adc131340de86ae"
+          cd ..
+          count="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).length)))')"
+          test "$count" = "0"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install exact dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Re-run PILOT readiness
+        working-directory: source
+        run: npm run check:pilot-readiness
+
+      - name: Re-run release hardening
+        working-directory: source
+        run: npm run check:release-hardening
+
+      - name: Re-run exact predeploy gate
+        working-directory: source
+        env:
+          EMCORE_RELEASE_COMMIT: ca224673f3a94227a85ba1303a420a18b726673a
+          EMCORE_RELEASE_TREE: 3f1d9df39226ad6a3849a2971adc131340de86ae
+          EMCORE_OPEN_RELEASE_PRS: '0'
+          EMCORE_C6_ACCEPTED: 'true'
+          EMCORE_C7_ACCEPTED: 'true'
+          EMCORE_G9_ACCEPTED: 'true'
+          EMCORE_WAVE1_ACCEPTED: 'true'
+          EMCORE_WAVE2_ACCEPTED: 'true'
+          EMCORE_ZERO_COST_VERIFIED: 'true'
+        run: npm run check:release-predeploy
+
+      - name: Verify safe live baseline before mutation
+        shell: bash
+        run: |
+          node <<'NODE'
+          const base='https://emcore-web-pilot.emcore-project.workers.dev';
+          const i=await fetch(base+'/api/deployment-identity');
+          if(!i.ok) throw new Error('pre-deploy identity HTTP '+i.status);
+          const ib=await i.json();
+          if(!['7032662079be0be02d3ab78aa535aa3c3cfde85a','ca224673f3a94227a85ba1303a420a18b726673a'].includes(ib.commitSha)) throw new Error('unexpected live commit '+ib.commitSha);
+          const r=await fetch(base+'/api/runtime-config');
+          if(!r.ok) throw new Error('runtime-config HTTP '+r.status);
+          const b=await r.json();
+          if(b.supabaseUrl!=='https://qogvvvqqkipmstajvhzl.supabase.co') throw new Error('wrong Supabase binding');
+          if(b.authMode!=='magic_link_mfa') throw new Error('wrong auth mode');
+          if(b.documentIngestionEnabled!==false) throw new Error('ingestion not frozen');
+          if(b.allowedOrganizationId!=='00605bb8-3899-406e-a428-d7779e856bb2') throw new Error('wrong org boundary');
+          if(b.applicationSurfaceMode!==undefined && b.applicationSurfaceMode!=='PILOT') throw new Error('unexpected surface mode');
+          NODE
+
+      - name: Deploy exact current main once if needed
+        working-directory: source
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          EMCORE_PILOT_COST_MODE: zero
+          WORKERS_CI_COMMIT_SHA: ca224673f3a94227a85ba1303a420a18b726673a
+        run: |
+          set +x
+          current="$(node -e "fetch('https://emcore-web-pilot.emcore-project.workers.dev/api/deployment-identity').then(async r=>{if(!r.ok)process.exit(2);const b=await r.json();process.stdout.write(b.commitSha||'')})")"
+          if [ "$current" = "ca224673f3a94227a85ba1303a420a18b726673a" ]; then
+            echo "DEPLOYMENT_REQUIRED=NO_ALREADY_CURRENT"
+          else
+            echo "DEPLOYMENT_REQUIRED=YES"
+            npm run deploy:cloudflare:pilot -- apps/web/wrangler.pilot.jsonc
+          fi
+
+      - name: Verify provider deployment state read-only
+        working-directory: source
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set +x
+          npm exec --workspace @emcore/web -- wrangler deployments status --name emcore-web-pilot --json > /tmp/deployments.json
+          test -s /tmp/deployments.json
+
+      - name: Verify exact live identity and runtime surface
+        shell: bash
+        run: |
+          node <<'NODE'
+          const base='https://emcore-web-pilot.emcore-project.workers.dev';
+          const i=await fetch(base+'/api/deployment-identity');
+          if(!i.ok) throw new Error('deployment identity HTTP '+i.status);
+          const ib=await i.json();
+          if(ib.commitSha!=='ca224673f3a94227a85ba1303a420a18b726673a') throw new Error('live deployment identity mismatch');
+          const r=await fetch(base+'/api/runtime-config');
+          if(!r.ok) throw new Error('runtime-config HTTP '+r.status);
+          const b=await r.json();
+          const exact={
+            supabaseUrl:'https://qogvvvqqkipmstajvhzl.supabase.co',
+            authMode:'magic_link_mfa',
+            applicationSurfaceMode:'PILOT',
+            documentIngestionEnabled:false,
+            allowedOrganizationId:'00605bb8-3899-406e-a428-d7779e856bb2'
+          };
+          for(const [k,v] of Object.entries(exact)) if(b[k]!==v) throw new Error('runtime mismatch '+k);
+          NODE
+
+      - name: Run canonical public PILOT smoke
+        working-directory: source
+        env:
+          EMCORE_PILOT_BASE_URL: https://emcore-web-pilot.emcore-project.workers.dev
+          EMCORE_PILOT_ORGANIZATION_ID: 00605bb8-3899-406e-a428-d7779e856bb2
+          EMCORE_PILOT_EXPECTED_COMMIT: ca224673f3a94227a85ba1303a420a18b726673a
+        run: npm run test:pilot:live
+
+      - name: Run automated synthetic AAL1/AAL2 acceptance
+        working-directory: source
+        env:
+          EMCORE_PILOT_BASE_URL: https://emcore-web-pilot.emcore-project.workers.dev
+          EMCORE_PILOT_BOOTSTRAP_URL: https://qogvvvqqkipmstajvhzl.supabase.co/functions/v1/emcore-live-pilot-smoke-bootstrap
+          EMCORE_PILOT_EXPECTED_COMMIT: ca224673f3a94227a85ba1303a420a18b726673a
+        run: npm run test:pilot:aal2
+
+      - name: Record terminal workflow result
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -e
+          git config user.name emcore-project
+          git config user.email "320991415+emcore-project@users.noreply.github.com"
+          printf '{"schema":"emcore.cc40-clean-pilot-alignment-result.v1","job_status":"%s","source_commit":"ca224673f3a94227a85ba1303a420a18b726673a"}\n' "$JOB_STATUS" > cc40-clean-pilot-alignment-result.json
+          git add cc40-clean-pilot-alignment-result.json
+          git commit -m "release: record CC40 clean PILOT alignment result" || true
+          git push origin HEAD:main
