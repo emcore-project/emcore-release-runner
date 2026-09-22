@@ -1,0 +1,143 @@
+name: EMCORE CC34 Commercial Persistence Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - cc34-commercial-persistence-qualification-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-cc34-commercial-persistence-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout qualification repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Validate bounded request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const r = require('./cc34-commercial-persistence-qualification-request.json');
+          const expected = {
+            schema: 'emcore.cc34-commercial-persistence-qualification.v1',
+            mode: 'QUALIFY',
+            mission: 'CC34-W4-COMMERCIAL-CONTROL-PLANE-PERSISTENCE-V1-001',
+            source_repository: 'emcore-project/emcore',
+            source_commit: 'a32c0cf636e92f8665524bce82c7fef81afc5fe9',
+            source_tree: 'a6c4c9a4909e607cab3af2a4f704a8414b3027a9',
+            source_baseline: '8cc593671999a7915d907b59b735b30b7308c496',
+            source_pr: 1091,
+            expected_open_pr_count: 1,
+            live_db_authorized: false,
+            deployment_authorized: false,
+            customer_data_authorized: false,
+            onboarding_authorized: false,
+            ingestion_enablement_authorized: false,
+            outreach_authorized: false,
+            payment_provider_authorized: false,
+            partner_remuneration_authorized: false,
+            q29_bypass_authorized: false
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (r[key] !== value) throw new Error('CC34 request mismatch: ' + key);
+          }
+          NODE
+
+      - name: Checkout exact private source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: a32c0cf636e92f8665524bce82c7fef81afc5fe9
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source identity and bounded scope
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "a32c0cf636e92f8665524bce82c7fef81afc5fe9"
+          test "$(git rev-parse 'HEAD^{tree}')" = "a6c4c9a4909e607cab3af2a4f704a8414b3027a9"
+          git cat-file -e 8cc593671999a7915d907b59b735b30b7308c496^{commit}
+          changed="$(git diff --name-only 8cc593671999a7915d907b59b735b30b7308c496..HEAD)"
+          echo "$changed"
+          unexpected="$(echo "$changed" | grep -Ev '^(supabase/migrations/20260921191000_commercial_control_plane_persistence_v1\.sql|packages/server/src/commercial-control-plane-persistence\.ts|tests/commercial-control-plane-persistence\.test\.ts)$' || true)"
+          test -z "$unexpected"
+          curl --fail-with-body --silent --show-error             -H "Authorization: Bearer ${EMCORE_SOURCE_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100"             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);if(p.length!==1||p[0].number!==1091||p[0].head.sha!=="a32c0cf636e92f8665524bce82c7fef81afc5fe9")process.exit(2);})'
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness and release hardening
+        working-directory: source
+        run: |
+          npm run check:pilot-readiness
+          npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused persistence qualification
+        working-directory: source
+        run: node --experimental-strip-types --test tests/commercial-control-plane-persistence.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          if ! CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance; then
+            CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          fi
+
+      - name: Assert persistence safety boundaries
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git diff --name-only 8cc593671999a7915d907b59b735b30b7308c496..HEAD | wc -l | tr -d ' ')" = "3"
+          test "$(git diff --name-only 8cc593671999a7915d907b59b735b30b7308c496..HEAD | grep '^supabase/migrations/' | wc -l | tr -d ' ')" = "1"
+          ! git diff 8cc593671999a7915d907b59b735b30b7308c496..HEAD -- supabase/migrations | grep -E 'create or replace function app_private\.(is_active_org_member|can_write_org|is_org_admin)|insert into public\.organization_memberships|update public\.organization_memberships|delete from public\.organization_memberships'
+          ! grep -Ei 'create policy .*commercial|grant .* to authenticated|grant .* to anon' supabase/migrations/20260921191000_commercial_control_plane_persistence_v1.sql
+          grep -q "grant execute on function public.persist_commercial_control_plane_snapshot_v1(jsonb) to service_role" supabase/migrations/20260921191000_commercial_control_plane_persistence_v1.sql
+          ! grep -Ei 'commission|remuneration|stripe|payment_provider|cloudflare|wrangler|outreach' supabase/migrations/20260921191000_commercial_control_plane_persistence_v1.sql
+          echo "CC34_COMMERCIAL_PERSISTENCE_QUALIFICATION=PASS"
+          echo "LIVE_DB_MUTATION=NONE"
+          echo "DEPLOYMENT_MUTATION=NONE"
+          echo "CUSTOMER_DATA=NONE"
+          echo "ONBOARDING=NONE"
+          echo "INGESTION_ENABLEMENT=NONE"
+          echo "RLS_BROADENING=NONE"
+          echo "Q29_BYPASS=NONE"
+          echo "ZERO_COST=PASS"
