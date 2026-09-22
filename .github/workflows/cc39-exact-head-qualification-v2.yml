@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 0e9455d1e524a3f6dce1618a44980417c5277b42
+          ref: e179714dab8dc0c6476d080281fe243f68c84e80
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -35,8 +35,8 @@ jobs:
           EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "0e9455d1e524a3f6dce1618a44980417c5277b42"
-          test "$(git rev-parse 'HEAD^{tree}')" = "59878c742bdb5656a862a7c9b973f8e011928f49"
+          test "$(git rev-parse HEAD)" = "e179714dab8dc0c6476d080281fe243f68c84e80"
+          test "$(git rev-parse 'HEAD^{tree}')" = "3f1d9df39226ad6a3849a2971adc131340de86ae"
           git cat-file -e 20f4e1fdc847997144af8864d15c6410fba5f48f^{commit}
           git cat-file -e 2235729e7549d9c880a3612c0372730fd3a8b664^{commit}
           node <<'NODE'
@@ -68,6 +68,7 @@ jobs:
             'tests/worker-runtime.test.ts'
           ].sort();
           const correctionExpected = [
+            'scripts/browser-acceptance.mjs',
             'tests/account-menu-wiring-source.test.ts',
             'tests/decision-assessment-framework-source.test.ts',
             'tests/dev-organization-boundary.test.ts',
@@ -83,7 +84,7 @@ jobs:
           if (JSON.stringify(correction) !== JSON.stringify(correctionExpected)) throw new Error('8-file correction boundary mismatch: '+JSON.stringify(correction));
           console.log('SOURCE_SCOPE_BOUNDARY=PASS');
           NODE
-          curl --fail-with-body --silent --show-error             -H "Authorization: Bearer ${EMCORE_SOURCE_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100"             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);if(p.length!==1||p[0].number!==1093||p[0].head.sha!=="0e9455d1e524a3f6dce1618a44980417c5277b42"||p[0].base.sha!=="20f4e1fdc847997144af8864d15c6410fba5f48f")process.exit(2);console.log("OPEN_PR_IDENTITY=PASS")})'
+          curl --fail-with-body --silent --show-error             -H "Authorization: Bearer ${EMCORE_SOURCE_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100"             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);if(p.length!==1||p[0].number!==1093||p[0].head.sha!=="e179714dab8dc0c6476d080281fe243f68c84e80"||p[0].base.sha!=="20f4e1fdc847997144af8864d15c6410fba5f48f")process.exit(2);console.log("OPEN_PR_IDENTITY=PASS")})'
 
       - name: Set up Node 22.16
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
