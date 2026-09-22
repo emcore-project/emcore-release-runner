@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 5b03c698f4b0cf98129141cf61623b9a2631bc25
+          ref: bef58d7ac10a69f147530a29949f4d5c68ffd254
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -38,8 +38,8 @@ jobs:
           EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "5b03c698f4b0cf98129141cf61623b9a2631bc25"
-          test "$(git rev-parse 'HEAD^{tree}')" = "bd1388a1141dfabbdc83040386bb4acf8f2d4da8"
+          test "$(git rev-parse HEAD)" = "bef58d7ac10a69f147530a29949f4d5c68ffd254"
+          test "$(git rev-parse 'HEAD^{tree}')" = "fee49279ea8c98a8f7470d1c606bb3a0195330ab"
           git cat-file -e b89015acfb07b445505e9f116551ff51fbb69abd^{commit}
           node <<'NODE'
           const { execFileSync } = require('node:child_process');
@@ -59,7 +59,7 @@ jobs:
             -H "Authorization: Bearer ${EMCORE_SOURCE_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);if(p.length!==1||p[0].number!==1096||p[0].head.sha!=="5b03c698f4b0cf98129141cf61623b9a2631bc25"||p[0].base.sha!=="b89015acfb07b445505e9f116551ff51fbb69abd")process.exit(2);console.log("OPEN_PR_IDENTITY=PASS")})'
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);if(p.length!==1||p[0].number!==1096||p[0].head.sha!=="bef58d7ac10a69f147530a29949f4d5c68ffd254"||p[0].base.sha!=="b89015acfb07b445505e9f116551ff51fbb69abd")process.exit(2);console.log("OPEN_PR_IDENTITY=PASS")})'
 
       - name: Set up Node 22.16
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
