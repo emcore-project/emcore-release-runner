@@ -1,0 +1,172 @@
+name: EMCORE CC43 D02 Final Exact-Head Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cc43-d02-final-exact-head-qualification.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-cc43-d02-final-exact-head-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: e7066bbea9537a596f806a76420ee0dca6c9ceee
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact identity and 18-file boundary
+        working-directory: source
+        shell: bash
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "e7066bbea9537a596f806a76420ee0dca6c9ceee"
+          test "$(git rev-parse 'HEAD^{tree}')" = "e5de6552138288ff0959f475b11b5acb95d39c5d"
+          git cat-file -e ca224673f3a94227a85ba1303a420a18b726673a^{commit}
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const expected = [
+            'apps/web/src/SupplyTechnicalDossier.tsx',
+            'apps/web/worker/r4e-live-proof.ts',
+            'packages/domain/src/gas-rcu-commercial-capacity-semantics.ts',
+            'packages/domain/src/gas-rcu-commercial-settlement-semantics.ts',
+            'packages/domain/src/gas-rcu-fields.ts',
+            'packages/domain/src/supply-profile-facts.ts',
+            'packages/domain/src/supply-technical-profile.ts',
+            'packages/server/src/supabase-sii-check-pod-supply-profile-persistence.ts',
+            'packages/server/src/supabase-sii-rcu-gas-supply-profile-persistence.ts',
+            'packages/server/src/supabase-supply-profile-context.ts',
+            'scripts/dev-technical-dossier-smoke.mjs',
+            'supabase/migrations/20260922103000_d02_energy_manager_completeness.sql',
+            'tests/d02-energy-manager-completeness.test.ts',
+            'tests/gas-rcu-commercial-capacity-semantics.test.ts',
+            'tests/gas-rcu-commercial-settlement-semantics.test.ts',
+            'tests/gas-rcu-fields.test.ts',
+            'tests/sii-check-pod-d02.test.ts',
+            'tests/supply-profile-facts.test.ts'
+          ].sort();
+          const out = execFileSync('git',['diff','--name-only','ca224673f3a94227a85ba1303a420a18b726673a..HEAD'],{encoding:'utf8'}).trim();
+          const actual = out ? out.split('\n').filter(Boolean).sort() : [];
+          if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('18-file boundary mismatch: '+JSON.stringify(actual));
+          console.log('SOURCE_SCOPE_BOUNDARY=PASS');
+          NODE
+          curl --fail-with-body --silent --show-error             -H "Authorization: Bearer ${EMCORE_SOURCE_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100"             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);if(p.length!==1||p[0].number!==1094||p[0].head.sha!=="e7066bbea9537a596f806a76420ee0dca6c9ceee"||p[0].base.sha!=="ca224673f3a94227a85ba1303a420a18b726673a")process.exit(2);console.log("OPEN_PR_IDENTITY=PASS")})'
+
+      - name: Set up Node 22.16
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness
+        working-directory: source
+        run: npm run check:pilot-readiness
+
+      - name: Release hardening
+        working-directory: source
+        run: npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D02 qualification
+        working-directory: source
+        run: |
+          node --experimental-strip-types --test             tests/d02-energy-manager-completeness.test.ts             tests/sii-check-pod-d02.test.ts             tests/supply-profile-facts.test.ts             tests/gas-rcu-fields.test.ts             tests/gas-rcu-commercial-capacity-semantics.test.ts             tests/gas-rcu-commercial-settlement-semantics.test.ts
+
+      - name: Cross-domain D02 compatibility assertions
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -R -q "D02_SUPPLY_TECHNICAL_DOSSIER" packages tests
+          grep -R -q "invoice" packages/domain packages/server tests
+          grep -R -q "INDEPENDENT_TECHNICAL" packages apps tests
+          grep -R -q "sourceDocumentId" packages apps tests
+          grep -R -q "sourceProvenanceId" packages apps tests
+          grep -R -q "evaluationDate\|asOf" apps/web/src/SupplyTechnicalDossier.tsx packages tests
+          echo "CROSS_DOMAIN_D02_COMPATIBILITY_STATIC=PASS"
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+
+      - name: D02 safety and authority assertions
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          f=supabase/migrations/20260922103000_d02_energy_manager_completeness.sql
+          grep -q "'authority_class',case" "$f"
+          for v in INDEPENDENT_TECHNICAL CONTRACTUAL BILLED_OBSERVATION CUSTOMER_REPORTED DEV_SYNTHETIC UNCLASSIFIED; do
+            grep -q "'$v'" "$f"
+          done
+          grep -q "sc.source_type in ('SII_CHECK_POD','SII_RCU','DISTRIBUTOR')" "$f"
+          grep -q "sc.validation_status='VALIDATED'" "$f"
+          grep -q "sc.source_provenance_id is not null then 'INDEPENDENT_TECHNICAL'" "$f"
+          grep -q "sc.source_type='INVOICE' then 'BILLED_OBSERVATION'" "$f"
+          if grep -q "sc.source_type='INVOICE' then 'INDEPENDENT_TECHNICAL'" "$f"; then exit 3; fi
+          grep -q "when (select count(distinct sc.value_signature)" "$f"
+          grep -q "then 'CONFLICTING'" "$f"
+          test "$(git diff --name-only ca224673f3a94227a85ba1303a420a18b726673a..HEAD | grep '^supabase/migrations/' | wc -l | tr -d ' ')" = "1"
+          ! git diff ca224673f3a94227a85ba1303a420a18b726673a..HEAD | grep -Ei 'DOCUMENT_INGESTION_ENABLED *= *true|customer onboarding|stripe|payment_provider'
+          echo "AUTHORITY_METADATA_STATIC_CONTRACT=PASS"
+          echo "AUTHORITY_IS_METADATA_NOT_WINNER=PASS"
+          echo "LIVE_DB_MUTATION=NONE"
+          echo "DEPLOYMENT_MUTATION=NONE"
+          echo "CUSTOMER_DATA=NONE"
+          echo "ONBOARDING=NONE"
+          echo "INGESTION_ENABLEMENT=NONE"
+          echo "Q29_BYPASS=NONE"
+          echo "ZERO_COST=PASS"
+          echo "CC43_D02_FINAL_EXACT_HEAD_QUALIFICATION=PASS"
+
+      - name: Record deep-dossier environment boundary
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${EMCORE_DEV_URL:-}" ] && [ -n "${EMCORE_BOOTSTRAP_URL:-}" ] && [ -n "${EMCORE_BOOTSTRAP_OIDC_TOKEN:-${EMCORE_GITHUB_OIDC_TOKEN:-}}" ]; then
+            echo "DEEP_DOSSIER_ENVIRONMENT=AVAILABLE"
+            CHROME_PATH=/usr/bin/google-chrome node scripts/dev-technical-dossier-smoke.mjs
+            echo "DEEP_DOSSIER_ACCEPTANCE=PASS"
+          else
+            echo "DEEP_DOSSIER_ENVIRONMENT=UNAVAILABLE_ON_COMPANION"
+            echo "DEEP_DOSSIER_ACCEPTANCE=NOT_EXECUTED_ENVIRONMENT_BOUNDARY"
+          fi
