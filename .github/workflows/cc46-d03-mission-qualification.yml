@@ -39,6 +39,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "eaa3a5aafe015de96d7617c8f9c85f41a7a17d5d"
+          echo "EMCORE_HEAD=$(git rev-parse HEAD)"
+          echo "EMCORE_HEAD_TREE=$(git rev-parse 'HEAD^{tree}')"
           git cat-file -e 2ed7418f90bd9bd9ec18516425c536618ea575a7^{commit}
           node <<'NODE'
           const { execFileSync } = require('node:child_process');
