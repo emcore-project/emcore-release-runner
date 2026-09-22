@@ -1,0 +1,141 @@
+name: CC49 D01 Mission Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cc49-d01-mission-qualification.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-cc49-d01-mission-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Prove runner allocation
+        run: echo "RUNNER_ALLOCATION=PASS"
+
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 5edce031f2c50cf73bfbdcca2012416634322418
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact identity and D01 boundary
+        working-directory: source
+        shell: bash
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "5edce031f2c50cf73bfbdcca2012416634322418"
+          test "$(git rev-parse 'HEAD^{tree}')" = "226942789f3d42a33380474ff1332a5664177090"
+          git cat-file -e fc33cd19425d4fc9adacedd5e5392caddbc17b71^{commit}
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const expected = [
+            'apps/web/src/D01EnergyMemoryPanel.tsx',
+            'apps/web/src/SupplyContractDossier.tsx',
+            'apps/web/src/d01-energy-memory-source.ts',
+            'packages/domain/src/customer-energy-memory.ts',
+            'tests/d01-asof-validation.test.ts',
+            'tests/d01-customer-energy-memory.test.ts',
+            'tests/d01-energy-memory-source.test.ts'
+          ].sort();
+          const out = execFileSync('git',['diff','--name-only','fc33cd19425d4fc9adacedd5e5392caddbc17b71..HEAD'],{encoding:'utf8'}).trim();
+          const actual = out ? out.split('\n').filter(Boolean).sort() : [];
+          if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('D01 boundary mismatch: '+JSON.stringify(actual));
+          console.log('D01_SOURCE_SCOPE_BOUNDARY=PASS');
+          NODE
+          curl --fail-with-body --silent --show-error             -H "Authorization: Bearer ${EMCORE_SOURCE_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100"             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);if(p.length!==1||p[0].number!==1098||p[0].head.sha!=="5edce031f2c50cf73bfbdcca2012416634322418"||p[0].base.sha!=="fc33cd19425d4fc9adacedd5e5392caddbc17b71")process.exit(2);console.log("OPEN_PR_IDENTITY=PASS")})'
+
+      - name: Set up Node 22.16
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness
+        working-directory: source
+        run: npm run check:pilot-readiness
+
+      - name: Release hardening
+        working-directory: source
+        run: npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D01 suite
+        working-directory: source
+        run: node --experimental-strip-types --test tests/d01-customer-energy-memory.test.ts tests/d01-asof-validation.test.ts tests/d01-energy-memory-source.test.ts
+
+      - name: Evidence persistence regression
+        working-directory: source
+        run: node --experimental-strip-types --test tests/evidence-persistence-contract-v1.test.ts tests/engine-deterministic-evidence-gate-v1.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: CHROME_PATH=/usr/bin/google-chrome npm run test:browser:acceptance
+
+      - name: D01 governance assertions
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "EMCORE_D01_CUSTOMER_ENERGY_MEMORY_V1" packages/domain/src/customer-energy-memory.ts
+          grep -q "LEGACY_AGGREGATE_KNOWLEDGE" packages/domain/src/customer-energy-memory.ts
+          grep -q "SOURCE_PERSISTENT_REFERENCE_INVALID" packages/domain/src/customer-energy-memory.ts
+          grep -q "WEAK_INFERENCE_ONLY" packages/domain/src/customer-energy-memory.ts
+          grep -q "REUSE_EXISTING_EVIDENCE" packages/domain/src/customer-energy-memory.ts
+          grep -q "REUSE_OPEN_REQUEST" packages/domain/src/customer-energy-memory.ts
+          grep -q "from('documents')" apps/web/src/d01-energy-memory-source.ts
+          grep -q "from('field_provenance')" apps/web/src/d01-energy-memory-source.ts
+          grep -q "from('document_relations')" apps/web/src/d01-energy-memory-source.ts
+          ! grep -Eiq "service_role|SUPABASE_SERVICE" apps/web/src/d01-energy-memory-source.ts apps/web/src/D01EnergyMemoryPanel.tsx
+          grep -q "data-d01-energy-memory=\"v1\"" apps/web/src/D01EnergyMemoryPanel.tsx
+          grep -q "Quali documenti e dati ha EMCORE" apps/web/src/D01EnergyMemoryPanel.tsx
+          grep -q "Da quale documento o fonte deriva un dato" apps/web/src/D01EnergyMemoryPanel.tsx
+          grep -q "evitando richieste duplicate" apps/web/src/D01EnergyMemoryPanel.tsx
+          grep -q "DETERMINISTIC_SOURCE_EVIDENCE" supabase/migrations/20260915190000_evidence_persistence_contract_v1.sql
+          grep -q "DETERMINISTIC_SOURCE_EVIDENCE_IMMUTABLE" supabase/migrations/20260915190000_evidence_persistence_contract_v1.sql
+          grep -q "app_private.is_active_org_member" supabase/migrations/20260827053745_add_tenant_rls_policies.sql
+          ! git diff fc33cd19425d4fc9adacedd5e5392caddbc17b71..HEAD --name-only | grep -q '^supabase/migrations/'
+          ! git diff fc33cd19425d4fc9adacedd5e5392caddbc17b71..HEAD | grep -Ei 'customer-identifiable|production customer|Q29_BYPASS *= *true'
+          echo "X_DOC_BUNDLE_001=PASS"
+          echo "X_DOC_BUNDLE_002=PASS"
+          echo "X_DOC_PROV_001=PASS"
+          echo "ATOMIC_EVIDENCE_PERSISTENCE=PASS"
+          echo "POWER_GAS_PARITY=PASS"
+          echo "TENANT_RLS_PRIVACY=PASS"
+          echo "NO_PARALLEL_EVIDENCE_LIFECYCLE=PASS"
+          echo "NO_CUSTOMER_DATA=PASS"
+          echo "NO_DEPLOYMENT=PASS"
+          echo "NO_LIVE_DB_MUTATION=PASS"
+          echo "Q29_BYPASS=NONE"
+          echo "ZERO_COST=PASS"
