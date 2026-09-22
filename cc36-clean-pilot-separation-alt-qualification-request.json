@@ -1,0 +1,20 @@
+{
+  "schema": "emcore.cc36-clean-pilot-separation-alt-qualification.v1",
+  "mode": "QUALIFY",
+  "mission": "CC36-W4-CLEAN-PILOT-CUSTOMER-PORTAL-SEPARATION-ALT-QUALIFICATION-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "2235729e7549d9c880a3612c0372730fd3a8b664",
+  "source_tree": "6014f014a762df7f49594af8dbe6e52d0d4ff133",
+  "source_baseline": "20f4e1fdc847997144af8864d15c6410fba5f48f",
+  "source_pr": 1093,
+  "expected_open_pr_count": 1,
+  "live_db_authorized": false,
+  "deployment_authorized": false,
+  "customer_data_authorized": false,
+  "onboarding_authorized": false,
+  "ingestion_enablement_authorized": false,
+  "outreach_authorized": false,
+  "payment_provider_authorized": false,
+  "partner_remuneration_authorized": false,
+  "q29_bypass_authorized": false
+}
