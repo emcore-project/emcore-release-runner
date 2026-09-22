@@ -1,0 +1,159 @@
+name: EMCORE CC39 Exact-Head Qualification V2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cc39-exact-head-qualification-v2.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-cc39-exact-head-qualification-v2
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 0e9455d1e524a3f6dce1618a44980417c5277b42
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact identity and bounded scope
+        working-directory: source
+        shell: bash
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "0e9455d1e524a3f6dce1618a44980417c5277b42"
+          test "$(git rev-parse 'HEAD^{tree}')" = "59878c742bdb5656a862a7c9b973f8e011928f49"
+          git cat-file -e 20f4e1fdc847997144af8864d15c6410fba5f48f^{commit}
+          git cat-file -e 2235729e7549d9c880a3612c0372730fd3a8b664^{commit}
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const lines = (a,b) => execFileSync('git',['diff','--name-only',a+'..'+b],{encoding:'utf8'}).trim().split('\n').filter(Boolean).sort();
+          const expected = [
+            'apps/web/src/DevExperienceShell.tsx',
+            'apps/web/src/main.tsx',
+            'apps/web/src/supabase-browser.ts',
+            'apps/web/worker/runtime.ts',
+            'apps/web/wrangler.jsonc',
+            'apps/web/wrangler.pilot.example.jsonc',
+            'apps/web/wrangler.pilot.jsonc',
+            'scripts/browser-acceptance.mjs',
+            'scripts/pilot-readiness-check.mjs',
+            'scripts/v1-release-hardening-check.mjs',
+            'tests/account-menu-wiring-source.test.ts',
+            'tests/application-surface-routing.test.ts',
+            'tests/commercial-operating-cockpit.test.ts',
+            'tests/decision-assessment-framework-source.test.ts',
+            'tests/dev-organization-boundary.test.ts',
+            'tests/dev-showcase-surface-static.test.ts',
+            'tests/document-evidence-focus-source.test.ts',
+            'tests/document-ingestion-boundary.test.ts',
+            'tests/ingestion-freeze-ui-source.test.ts',
+            'tests/pilot-auth-gate-source.test.ts',
+            'tests/supabase-browser-runtime-config.test.ts',
+            'tests/supabase-browser-runtime.test.ts',
+            'tests/worker-runtime.test.ts'
+          ].sort();
+          const correctionExpected = [
+            'tests/account-menu-wiring-source.test.ts',
+            'tests/decision-assessment-framework-source.test.ts',
+            'tests/dev-organization-boundary.test.ts',
+            'tests/dev-showcase-surface-static.test.ts',
+            'tests/document-evidence-focus-source.test.ts',
+            'tests/document-ingestion-boundary.test.ts',
+            'tests/ingestion-freeze-ui-source.test.ts',
+            'tests/pilot-auth-gate-source.test.ts'
+          ].sort();
+          const changed = lines('20f4e1fdc847997144af8864d15c6410fba5f48f','HEAD');
+          const correction = lines('2235729e7549d9c880a3612c0372730fd3a8b664','HEAD');
+          if (JSON.stringify(changed) !== JSON.stringify(expected)) throw new Error('23-file PR boundary mismatch: '+JSON.stringify(changed));
+          if (JSON.stringify(correction) !== JSON.stringify(correctionExpected)) throw new Error('8-file correction boundary mismatch: '+JSON.stringify(correction));
+          console.log('SOURCE_SCOPE_BOUNDARY=PASS');
+          NODE
+          curl --fail-with-body --silent --show-error             -H "Authorization: Bearer ${EMCORE_SOURCE_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100"             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);if(p.length!==1||p[0].number!==1093||p[0].head.sha!=="0e9455d1e524a3f6dce1618a44980417c5277b42"||p[0].base.sha!=="20f4e1fdc847997144af8864d15c6410fba5f48f")process.exit(2);console.log("OPEN_PR_IDENTITY=PASS")})'
+
+      - name: Set up Node 22.16
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness
+        working-directory: source
+        run: npm run check:pilot-readiness
+
+      - name: Release hardening
+        working-directory: source
+        run: npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused surface and runtime qualification
+        working-directory: source
+        run: node --experimental-strip-types --test tests/application-surface-routing.test.ts tests/supabase-browser-runtime-config.test.ts tests/supabase-browser-runtime.test.ts tests/worker-runtime.test.ts tests/commercial-operating-cockpit.test.ts tests/account-menu-wiring-source.test.ts tests/decision-assessment-framework-source.test.ts tests/dev-organization-boundary.test.ts tests/dev-showcase-surface-static.test.ts tests/document-evidence-focus-source.test.ts tests/document-ingestion-boundary.test.ts tests/ingestion-freeze-ui-source.test.ts tests/pilot-auth-gate-source.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+
+      - name: Assert separation safety boundaries
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only 20f4e1fdc847997144af8864d15c6410fba5f48f..HEAD)"
+          test "$(printf '%s\n' "$changed" | grep '^supabase/migrations/' | wc -l | tr -d ' ')" = "0"
+          ! printf '%s\n' "$changed" | grep -E '(^|/)(CustomerPortal|AccountPage)\.tsx$'
+          ! git diff 20f4e1fdc847997144af8864d15c6410fba5f48f..HEAD | grep -Ei 'create policy|grant .* to authenticated|grant .* to anon|organization_memberships'
+          ! git diff 20f4e1fdc847997144af8864d15c6410fba5f48f..HEAD | grep -Ei 'stripe|payment_provider|customer onboarding|DOCUMENT_INGESTION_ENABLED *= *true'
+          grep -q 'APPLICATION_SURFACE_MODE' apps/web/worker/runtime.ts
+          grep -q 'applicationSurfaceMode' apps/web/src/supabase-browser.ts
+          grep -q "applicationSurfaceMode === 'PILOT'" apps/web/src/main.tsx
+          grep -q "applicationSurfaceMode === 'DEV'" apps/web/src/main.tsx
+          grep -q 'DevExperienceShell' apps/web/src/main.tsx
+          grep -q '"APPLICATION_SURFACE_MODE": "pilot"' apps/web/wrangler.pilot.jsonc
+          grep -q '"DOCUMENT_INGESTION_ENABLED": "false"' apps/web/wrangler.pilot.jsonc
+          echo "CC39_EXACT_HEAD_QUALIFICATION=PASS"
+          echo "LIVE_DB_MUTATION=NONE"
+          echo "DEPLOYMENT_MUTATION=NONE"
+          echo "CUSTOMER_DATA=NONE"
+          echo "ONBOARDING=NONE"
+          echo "INGESTION_ENABLEMENT=NONE"
+          echo "RLS_BROADENING=NONE"
+          echo "Q29_BYPASS=NONE"
+          echo "ZERO_COST=PASS"
