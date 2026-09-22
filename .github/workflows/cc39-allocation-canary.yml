@@ -1,0 +1,16 @@
+name: CC39 Allocation Canary
+
+on:
+  push:
+    paths:
+      - '.github/workflows/cc39-allocation-canary.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  allocation-canary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prove runner allocation
+        run: echo "CC39_ALLOCATION_CANARY_PASS"
