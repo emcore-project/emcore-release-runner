@@ -1,0 +1,21 @@
+{
+  "schema": "emcore.cc38.exact-head-qualification.v1",
+  "mode": "QUALIFY",
+  "mission": "CC38-W4-CLEAN-PILOT-CUSTOMER-PORTAL-SEPARATION-EXACT-HEAD-QUALIFICATION-RECOVERY-001",
+  "source_repository": "emcore-project/emcore",
+  "source_commit": "0e9455d1e524a3f6dce1618a44980417c5277b42",
+  "source_tree": "59878c742bdb5656a862a7c9b973f8e011928f49",
+  "source_baseline": "20f4e1fdc847997144af8864d15c6410fba5f48f",
+  "previous_head": "2235729e7549d9c880a3612c0372730fd3a8b664",
+  "source_pr": 1093,
+  "expected_open_pr_count": 1,
+  "live_db_authorized": false,
+  "deployment_authorized": false,
+  "customer_data_authorized": false,
+  "onboarding_authorized": false,
+  "ingestion_enablement_authorized": false,
+  "outreach_authorized": false,
+  "payment_provider_authorized": false,
+  "partner_remuneration_authorized": false,
+  "q29_bypass_authorized": false
+}
