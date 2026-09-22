@@ -100,13 +100,7 @@ jobs:
       - name: Browser acceptance
         working-directory: source
         shell: bash
-        run: |
-          cat > /tmp/emcore-chrome <<'EOF'
-          #!/bin/sh
-          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
-          EOF
-          chmod +x /tmp/emcore-chrome
-          CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+        run: CHROME_PATH=/usr/bin/google-chrome npm run test:browser:acceptance
 
       - name: D04 governance assertions
         working-directory: source
