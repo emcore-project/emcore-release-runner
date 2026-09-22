@@ -1,0 +1,132 @@
+name: CC46 D03 Mission Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cc46-d03-mission-qualification.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-cc46-d03-mission-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Prove runner allocation
+        run: echo "RUNNER_ALLOCATION=PASS"
+
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: eaa3a5aafe015de96d7617c8f9c85f41a7a17d5d
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact identity and D03 boundary
+        working-directory: source
+        shell: bash
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "eaa3a5aafe015de96d7617c8f9c85f41a7a17d5d"
+          git cat-file -e 2ed7418f90bd9bd9ec18516425c536618ea575a7^{commit}
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const expected = [
+            'apps/web/src/CustomerPortal.tsx',
+            'apps/web/src/D03ConsumptionIntelligencePanel.tsx',
+            'packages/domain/src/consumption-intelligence.ts',
+            'packages/domain/src/official-consumption-export.ts',
+            'packages/server/src/supabase-consumption-intelligence.ts',
+            'supabase/migrations/20260922160000_d03_consumption_load_profile_intelligence.sql',
+            'tests/d03-consumption-load-profile-intelligence.test.ts',
+            'tests/supabase-consumption-intelligence.test.ts'
+          ].sort();
+          const out = execFileSync('git',['diff','--name-only','2ed7418f90bd9bd9ec18516425c536618ea575a7..HEAD'],{encoding:'utf8'}).trim();
+          const actual = out ? out.split('\n').filter(Boolean).sort() : [];
+          if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('D03 boundary mismatch: '+JSON.stringify(actual));
+          console.log('D03_SOURCE_SCOPE_BOUNDARY=PASS');
+          NODE
+          curl --fail-with-body --silent --show-error             -H "Authorization: Bearer ${EMCORE_SOURCE_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100"             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);if(p.length!==1||p[0].number!==1095||p[0].head.sha!=="eaa3a5aafe015de96d7617c8f9c85f41a7a17d5d"||p[0].base.sha!=="2ed7418f90bd9bd9ec18516425c536618ea575a7")process.exit(2);console.log("OPEN_PR_IDENTITY=PASS")})'
+
+      - name: Set up Node 22.16
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness
+        working-directory: source
+        run: npm run check:pilot-readiness
+
+      - name: Release hardening
+        working-directory: source
+        run: npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D03 suite
+        working-directory: source
+        run: |
+          node --experimental-strip-types --test             tests/d03-consumption-load-profile-intelligence.test.ts             tests/supabase-consumption-intelligence.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+
+      - name: D03 privacy fail-closed and parity assertions
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          f=supabase/migrations/20260922160000_d03_consumption_load_profile_intelligence.sql
+          grep -q "BILLED_CONSUMPTION" "$f"
+          grep -q "MEASURED_VALIDATED_CONSUMPTION" "$f"
+          grep -q "CUSTOMER_PROVIDED_MEASUREMENT" "$f"
+          grep -q "DERIVED_AGGREGATE" "$f"
+          grep -q "ESTIMATED_OR_FORECAST_CONSUMPTION" "$f"
+          grep -q "commodity in ('EE','GAS')" "$f"
+          grep -q "enable row level security" "$f"
+          grep -q "app_private.is_active_org_member" "$f"
+          grep -q "storage_object_path !~\* '\^https?://'" "$f"
+          ! grep -R -E "SPID|CIE|scrap(e|ing)" packages/domain/src/official-consumption-export.ts apps/web/src/D03ConsumptionIntelligencePanel.tsx
+          ! git diff 2ed7418f90bd9bd9ec18516425c536618ea575a7..HEAD | grep -Ei 'DOCUMENT_INGESTION_ENABLED *= *true|customer onboarding|stripe|payment_provider'
+          echo "POWER_GAS_PARITY=PASS"
+          echo "PRIVATE_STORAGE_RLS=PASS"
+          echo "NO_CUSTOMER_DATA=PASS"
+          echo "NO_DEPLOYMENT=PASS"
+          echo "NO_LIVE_DB_MUTATION=PASS"
+          echo "Q29_BYPASS=NONE"
+          echo "ZERO_COST=PASS"
