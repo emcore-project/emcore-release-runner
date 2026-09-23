@@ -25,6 +25,8 @@ on:
         description: Audit-safe mission reference
         required: true
         type: string
+  issue_comment:
+    types: [created]
   pull_request:
     branches: [main]
     paths:
@@ -57,6 +59,9 @@ jobs:
           changed="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
           test "$changed" = ".github/workflows/exact-source-qualification.yml"
           grep -q "workflow_dispatch:" .github/workflows/exact-source-qualification.yml
+          grep -q "issue_comment:" .github/workflows/exact-source-qualification.yml
+          grep -q "github.event.issue.number == 16" .github/workflows/exact-source-qualification.yml
+          grep -q "github.event.comment.user.login == github.repository_owner" .github/workflows/exact-source-qualification.yml
           grep -q "source_repository:" .github/workflows/exact-source-qualification.yml
           grep -q "source_sha:" .github/workflows/exact-source-qualification.yml
           grep -q "source_tree:" .github/workflows/exact-source-qualification.yml
@@ -70,32 +75,57 @@ jobs:
           echo "EXECUTOR_SELF_VALIDATION=PASS"
 
   qualify:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'issue_comment' && github.event.issue.number == 16 && github.event.comment.user.login == github.repository_owner)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Validate bounded inputs
+      - name: Resolve and validate bounded request
+        id: request
         shell: bash
         env:
-          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
-          SOURCE_SHA: ${{ inputs.source_sha }}
-          SOURCE_TREE: ${{ inputs.source_tree }}
-          QUALIFICATION_PROFILE: ${{ inputs.qualification_profile }}
-          MISSION_REFERENCE: ${{ inputs.mission_reference }}
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          INPUT_SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          INPUT_SOURCE_TREE: ${{ inputs.source_tree }}
+          INPUT_QUALIFICATION_PROFILE: ${{ inputs.qualification_profile }}
+          INPUT_MISSION_REFERENCE: ${{ inputs.mission_reference }}
         run: |
           set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SOURCE_REPOSITORY="$INPUT_SOURCE_REPOSITORY"
+            SOURCE_SHA="$INPUT_SOURCE_SHA"
+            SOURCE_TREE="$INPUT_SOURCE_TREE"
+            QUALIFICATION_PROFILE="$INPUT_QUALIFICATION_PROFILE"
+            MISSION_REFERENCE="$INPUT_MISSION_REFERENCE"
+          else
+            test "$(printf '%s\n' "$COMMENT_BODY" | sed -n '1p')" = "RUN_EXACT_SOURCE_QUALIFICATION"
+            test "$(printf '%s\n' "$COMMENT_BODY" | wc -l | tr -d ' ')" = "6"
+            SOURCE_REPOSITORY="$(printf '%s\n' "$COMMENT_BODY" | sed -n '2s/^source_repository=//p')"
+            SOURCE_SHA="$(printf '%s\n' "$COMMENT_BODY" | sed -n '3s/^source_sha=//p')"
+            SOURCE_TREE="$(printf '%s\n' "$COMMENT_BODY" | sed -n '4s/^source_tree=//p')"
+            QUALIFICATION_PROFILE="$(printf '%s\n' "$COMMENT_BODY" | sed -n '5s/^qualification_profile=//p')"
+            MISSION_REFERENCE="$(printf '%s\n' "$COMMENT_BODY" | sed -n '6s/^mission_reference=//p')"
+          fi
           test "$SOURCE_REPOSITORY" = "emcore-project/emcore"
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]]
           test "$QUALIFICATION_PROFILE" = "POST_D01_ENERGY_MANAGER_CROSS_DOMAIN_V1"
           [[ "$MISSION_REFERENCE" =~ ^[A-Z0-9][A-Z0-9._-]{2,119}$ ]]
+          {
+            echo "source_repository=$SOURCE_REPOSITORY"
+            echo "source_sha=$SOURCE_SHA"
+            echo "source_tree=$SOURCE_TREE"
+            echo "qualification_profile=$QUALIFICATION_PROFILE"
+            echo "mission_reference=$MISSION_REFERENCE"
+          } >> "$GITHUB_OUTPUT"
           echo "BOUNDED_INPUTS=PASS"
 
       - name: Checkout exact EMCORE source
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ steps.request.outputs.source_sha }}
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -105,8 +135,8 @@ jobs:
         working-directory: source
         shell: bash
         env:
-          SOURCE_SHA: ${{ inputs.source_sha }}
-          SOURCE_TREE: ${{ inputs.source_tree }}
+          SOURCE_SHA: ${{ steps.request.outputs.source_sha }}
+          SOURCE_TREE: ${{ steps.request.outputs.source_tree }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
