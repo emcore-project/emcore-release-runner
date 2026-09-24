@@ -146,7 +146,7 @@ jobs:
 
             const snap=await evalJs(`(document.querySelector('.v04__snapshot')?.innerText||'')`);
             if(!snap.includes('Prossima scadenza contrattuale')||!snap.includes('Verifiche aperte')||!snap.includes('Documenti collegati')) throw new Error('inspector snapshot incomplete');
-            if(document.querySelector?.('.v04__inspector .v04__tabs')) throw new Error('legacy inspector tabs remain');
+            if(await evalJs(`!!document.querySelector('.v04__inspector .v04__tabs')`)) throw new Error('legacy inspector tabs remain');
             pass('08_LEVEL1_INSPECTOR_SYNTHESIS');
 
             await evalJs(`document.querySelector('.v04__primary').click();true`);
