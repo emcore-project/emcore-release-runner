@@ -101,6 +101,7 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs');
 
+          (async () => {
           const base = process.env.TARGET_PREVIEW;
           const targets = JSON.parse(fs.readFileSync('/tmp/cdp-targets','utf8'));
           const pageTarget = targets.find(t => t.type === 'page' && t.url.startsWith(base)) || targets.find(t => t.type === 'page');
@@ -303,4 +304,8 @@ jobs:
 
           console.log('QA13_V04_RUNTIME_ACCEPTANCE=TERMINAL_PASS');
           ws.close();
+          })().catch((error) => {
+            console.error(error?.stack || String(error));
+            process.exit(1);
+          });
           NODE
