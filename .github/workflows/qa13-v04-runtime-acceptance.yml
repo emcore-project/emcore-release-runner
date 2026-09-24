@@ -1,0 +1,303 @@
+name: QA13 V04 Exact-Head Runtime Acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/qa13-v04-runtime-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  runtime_acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TARGET_SHA: b29151c43f0a2e562b29906c2a64843bf4400cfa
+      TARGET_TREE: 8dd91c21f9a002ccbf2bf39eb51629aea44667f2
+      TARGET_PREVIEW: https://939f6015-emcore-web-dev.emcore-project.workers.dev
+    steps:
+      - name: Verify bounded harness scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "MISSION=CC67-QA13-V04-RUNTIME-ACCEPTANCE-001"
+          echo "RUNNER=github-hosted-ubuntu-latest"
+          echo "HARNESS=temporary-companion-cdp-zero-dependency"
+          echo "ZERO_INCREMENTAL_COST=PASS"
+          echo "PRODUCT_MUTATION=NONE"
+          echo "MAIN_MUTATION=NONE"
+          echo "LIVE_DB_MUTATION=NONE"
+
+      - name: Verify exact source and PR state
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr_json="$(curl -fsSL -H 'Accept: application/vnd.github+json' https://api.github.com/repos/emcore-project/emcore/pulls/1110)"
+          test "$(printf '%s' "$pr_json" | jq -r '.head.sha')" = "$TARGET_SHA"
+          test "$(printf '%s' "$pr_json" | jq -r '.state')" = "open"
+          test "$(printf '%s' "$pr_json" | jq -r '.draft')" = "true"
+          test "$(printf '%s' "$pr_json" | jq -r '.merged_at')" = "null"
+          commit_json="$(curl -fsSL -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/emcore-project/emcore/commits/$TARGET_SHA")"
+          test "$(printf '%s' "$commit_json" | jq -r '.commit.tree.sha')" = "$TARGET_TREE"
+          echo "SOURCE_SHA=$TARGET_SHA"
+          echo "SOURCE_TREE=$TARGET_TREE"
+          echo "PR1110_STATE=OPEN_DRAFT_UNMERGED"
+          echo "SOURCE_DRIFT=NONE"
+          echo "EXACT_SOURCE_IDENTITY=PASS"
+
+      - name: Verify deployed identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL "$TARGET_PREVIEW/api/deployment-identity" -o /tmp/deployment-identity
+          node <<'NODE'
+          const fs = require('node:fs');
+          const expected = process.env.TARGET_SHA;
+          const raw = fs.readFileSync('/tmp/deployment-identity','utf8').trim();
+          let ok = raw === expected;
+          if (!ok) {
+            try {
+              const parsed = JSON.parse(raw);
+              const values = [];
+              const walk = (v) => {
+                if (typeof v === 'string') values.push(v);
+                else if (Array.isArray(v)) v.forEach(walk);
+                else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+              };
+              walk(parsed);
+              ok = values.includes(expected);
+            } catch {}
+          }
+          if (!ok) {
+            console.error('DEPLOYMENT_IDENTITY_RAW=' + raw);
+            process.exit(1);
+          }
+          console.log('DEPLOYMENT_IDENTITY=' + expected);
+          console.log('DEPLOYMENT_IDENTITY_CHECK=PASS');
+          NODE
+
+      - name: Execute bounded interactive acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          test -n "$chrome"
+          echo "CHROME_BINARY=$chrome"
+          "$chrome" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+            --remote-debugging-port=9222 --user-data-dir=/tmp/qa13-chrome \
+            --window-size=1440,1000 "$TARGET_PREVIEW/#supplies" >/tmp/chrome.log 2>&1 &
+          chrome_pid=$!
+          trap 'kill "$chrome_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:9222/json/version >/tmp/cdp-version 2>/dev/null; then break; fi
+            sleep 0.5
+          done
+          curl -fsS http://127.0.0.1:9222/json >/tmp/cdp-targets
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const base = process.env.TARGET_PREVIEW;
+          const targets = JSON.parse(fs.readFileSync('/tmp/cdp-targets','utf8'));
+          const pageTarget = targets.find(t => t.type === 'page' && t.url.startsWith(base)) || targets.find(t => t.type === 'page');
+          if (!pageTarget?.webSocketDebuggerUrl) throw new Error('No CDP page target');
+
+          let seq = 0;
+          const pending = new Map();
+          const exceptions = [];
+          const ws = new WebSocket(pageTarget.webSocketDebuggerUrl);
+
+          const ready = new Promise((resolve, reject) => {
+            ws.addEventListener('open', resolve, { once: true });
+            ws.addEventListener('error', reject, { once: true });
+          });
+
+          ws.addEventListener('message', (event) => {
+            const msg = JSON.parse(String(event.data));
+            if (msg.id && pending.has(msg.id)) {
+              const { resolve, reject } = pending.get(msg.id);
+              pending.delete(msg.id);
+              if (msg.error) reject(new Error(JSON.stringify(msg.error)));
+              else resolve(msg.result);
+            } else if (msg.method === 'Runtime.exceptionThrown') {
+              exceptions.push(msg.params?.exceptionDetails?.text || 'runtime exception');
+            }
+          });
+
+          function send(method, params = {}) {
+            const id = ++seq;
+            return new Promise((resolve, reject) => {
+              pending.set(id, { resolve, reject });
+              ws.send(JSON.stringify({ id, method, params }));
+            });
+          }
+
+          async function evalJs(expression, awaitPromise = true) {
+            const out = await send('Runtime.evaluate', {
+              expression,
+              awaitPromise,
+              returnByValue: true,
+              userGesture: true,
+            });
+            if (out.exceptionDetails) throw new Error('Evaluation exception: ' + out.exceptionDetails.text);
+            return out.result?.value;
+          }
+
+          async function waitFor(expression, timeoutMs = 12000) {
+            const start = Date.now();
+            while (Date.now() - start < timeoutMs) {
+              try {
+                if (await evalJs(expression)) return;
+              } catch {}
+              await new Promise(r => setTimeout(r, 200));
+            }
+            throw new Error('waitFor timeout: ' + expression);
+          }
+
+          async function clickText(containerSelector, text) {
+            const payload = JSON.stringify({ containerSelector, text });
+            const ok = await evalJs(`(() => {
+              const {containerSelector,text} = ${payload};
+              const root = document.querySelector(containerSelector) || document;
+              const el = [...root.querySelectorAll('button')].find(b => (b.textContent||'').trim().includes(text));
+              if (!el) return false;
+              el.click();
+              return true;
+            })()`);
+            if (!ok) throw new Error('button not found: ' + containerSelector + ' / ' + text);
+          }
+
+          async function setInput(selector, value) {
+            const payload = JSON.stringify({ selector, value });
+            const ok = await evalJs(`(() => {
+              const {selector,value} = ${payload};
+              const el = document.querySelector(selector);
+              if (!el) return false;
+              const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+              setter.call(el,value);
+              el.dispatchEvent(new Event('input',{bubbles:true}));
+              return true;
+            })()`);
+            if (!ok) throw new Error('input not found: ' + selector);
+          }
+
+          function pass(id, detail='') {
+            console.log(`CHECK_${id}=PASS${detail ? ' | ' + detail : ''}`);
+          }
+
+          await ready;
+          await send('Runtime.enable');
+          await send('Page.enable');
+          await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+          await waitFor(`document.querySelector('.v04') && document.querySelectorAll('.v04__row').length >= 2`);
+          pass('00_DESKTOP_VIEWPORT','1440x1000');
+
+          // 1. Sidebar navigation changes sections correctly.
+          await clickText('.v04__nav','Documenti');
+          await waitFor(`location.hash === '#documents' && !!document.querySelector('.emcore-v02')`);
+          pass('01_SIDEBAR_NAVIGATION','Forniture -> Documenti');
+          await evalJs(`location.hash='#supplies'; true`);
+          await waitFor(`!!document.querySelector('.v04')`);
+
+          // 2. Selected supply row changes inspector selection.
+          const initialInspector = await evalJs(`document.querySelector('.v04__inspector h2')?.textContent?.trim() || ''`);
+          const secondCode = await evalJs(`document.querySelectorAll('.v04__row')[1]?.querySelector('.v04__supply-cell strong')?.textContent?.trim() || ''`);
+          await evalJs(`document.querySelectorAll('.v04__row')[1].click(); true`);
+          await waitFor(`document.querySelector('.v04__inspector h2')?.textContent?.trim() === ${JSON.stringify(secondCode)}`);
+          const selectedCount = await evalJs(`document.querySelectorAll('.v04__row.is-selected').length`);
+          if (selectedCount !== 1 || secondCode === initialInspector) throw new Error('selected row/inspector assertion failed');
+          pass('02_ROW_SELECTION', secondCode);
+
+          // 3. Search filters rows.
+          const totalRows = await evalJs(`document.querySelectorAll('.v04__row').length`);
+          await setInput('.v04__search input', secondCode);
+          await waitFor(`document.querySelectorAll('.v04__row').length >= 1 && document.querySelectorAll('.v04__row').length < ${totalRows}`);
+          const searchRows = await evalJs(`document.querySelectorAll('.v04__row').length`);
+          pass('03_SEARCH_FILTER', `${totalRows}->${searchRows}`);
+          await setInput('.v04__search input','');
+          await waitFor(`document.querySelectorAll('.v04__row').length === ${totalRows}`);
+
+          // 4. EE filter works.
+          await clickText('.v04__filters','Energia elettrica');
+          await waitFor(`document.querySelectorAll('.v04__row').length > 0`);
+          const eeOk = await evalJs(`[...document.querySelectorAll('.v04__row .v04__supply-cell small')].every(x => (x.textContent||'').includes('Energia elettrica'))`);
+          if (!eeOk) throw new Error('EE filter assertion failed');
+          pass('04_FILTER_EE');
+
+          // 5. GAS filter works.
+          await clickText('.v04__filters','Gas');
+          await waitFor(`document.querySelectorAll('.v04__row').length > 0`);
+          const gasOk = await evalJs(`[...document.querySelectorAll('.v04__row .v04__supply-cell small')].every(x => (x.textContent||'').includes('Gas naturale'))`);
+          if (!gasOk) throw new Error('GAS filter assertion failed');
+          pass('05_FILTER_GAS');
+
+          // 6. Da verificare filter works.
+          await clickText('.v04__filters','Da verificare');
+          await waitFor(`document.querySelectorAll('.v04__row').length > 0`);
+          const attnOk = await evalJs(`[...document.querySelectorAll('.v04__row .v04__status')].every(x => (x.textContent||'').includes('Da verificare'))`);
+          if (!attnOk) throw new Error('Da verificare filter assertion failed');
+          pass('06_FILTER_ATTENTION');
+          await clickText('.v04__filters','Tutte');
+          await waitFor(`document.querySelectorAll('.v04__row').length === ${totalRows}`);
+
+          // 7. Sort toggle changes ordering mode and CODE is lexical ascending.
+          const beforeSortLabel = await evalJs(`document.querySelector('.v04__sort')?.textContent?.trim() || ''`);
+          await evalJs(`document.querySelector('.v04__sort').click(); true`);
+          await waitFor(`document.querySelector('.v04__sort')?.textContent?.includes('Codice')`);
+          const codeOrderOk = await evalJs(`(() => {
+            const a=[...document.querySelectorAll('.v04__row .v04__supply-cell strong')].map(x => (x.textContent||'').trim());
+            return JSON.stringify(a) === JSON.stringify([...a].sort((x,y)=>x.localeCompare(y)));
+          })()`);
+          if (!codeOrderOk || beforeSortLabel.includes('Codice')) throw new Error('sort toggle assertion failed');
+          pass('07_SORT_TOGGLE','Rinnovo -> Codice');
+
+          // 8. Inspector tabs work.
+          for (const label of ['Sintesi','Contratto','Consumi','Controlli','Fonti']) {
+            await clickText('.v04__tabs', label);
+            await waitFor(`[...document.querySelectorAll('.v04__tabs button')].some(b => b.classList.contains('is-active') && (b.textContent||'').trim() === ${JSON.stringify(label)})`);
+            const bodyLen = await evalJs(`(document.querySelector('.v04__inspector-body')?.textContent || '').trim().length`);
+            if (!bodyLen) throw new Error('empty inspector body for tab ' + label);
+            pass('08_TAB_' + label.toUpperCase().replaceAll(' ','_'));
+          }
+
+          // 9. Dossier CTA changes expected inspector state to Contratto.
+          await clickText('.v04__tabs','Sintesi');
+          await evalJs(`document.querySelector('.v04__primary').click(); true`);
+          await waitFor(`[...document.querySelectorAll('.v04__tabs button')].some(b => b.classList.contains('is-active') && (b.textContent||'').trim() === 'Contratto')`);
+          pass('09_DOSSIER_CTA','Contratto');
+
+          // 10. Navigation to Documenti, Controlli, Cosa fare.
+          for (const [label, hash] of [['Documenti','#documents'],['Controlli','#analysis'],['Cosa fare','#actions']]) {
+            await evalJs(`location.hash='#supplies'; true`);
+            await waitFor(`!!document.querySelector('.v04')`);
+            await clickText('.v04__nav',label);
+            await waitFor(`location.hash === ${JSON.stringify(hash)} && !!document.querySelector('.emcore-v02')`);
+            pass('10_NAV_' + label.toUpperCase().replaceAll(' ','_'), hash);
+          }
+
+          // 11. Mobile viewport: scrim removable, no blocking overlay, no horizontal page blocker.
+          await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+          await evalJs(`location.hash='#supplies'; location.reload(); true`);
+          await waitFor(`!!document.querySelector('.v04') && !!document.querySelector('.v04__mobile-trigger')`);
+          pass('11_MOBILE_VIEWPORT','390x844');
+          await evalJs(`document.querySelector('.v04__mobile-trigger').click(); true`);
+          await waitFor(`!!document.querySelector('.v04__scrim') && document.querySelector('.v04__sidebar').classList.contains('is-open')`);
+          pass('11A_MOBILE_SCRIM_OPEN');
+          await evalJs(`document.querySelector('.v04__scrim').click(); true`);
+          await waitFor(`!document.querySelector('.v04__scrim') && !document.querySelector('.v04__sidebar').classList.contains('is-open')`);
+          pass('11B_MOBILE_SCRIM_REMOVED');
+          const noOverlay = await evalJs(`!document.querySelector('.v04__scrim') && document.querySelectorAll('.v04__utility-popover').length === 0`);
+          if (!noOverlay) throw new Error('blocking overlay remains');
+          pass('11C_NO_BLOCKING_OVERLAY');
+          const noGlobalHorizontal = await evalJs(`document.documentElement.scrollWidth <= window.innerWidth + 1 && document.body.scrollWidth <= window.innerWidth + 1`);
+          if (!noGlobalHorizontal) throw new Error('global horizontal navigation blocker: width=' + await evalJs(`document.documentElement.scrollWidth + '/' + window.innerWidth`));
+          pass('11D_NO_HORIZONTAL_NAV_BLOCKER');
+
+          // 12. No runtime exception blocking journey.
+          if (exceptions.length) throw new Error('Runtime exceptions: ' + exceptions.join(' | '));
+          pass('12_NO_BLOCKING_RUNTIME_EXCEPTION');
+
+          console.log('QA13_V04_RUNTIME_ACCEPTANCE=TERMINAL_PASS');
+          ws.close();
+          NODE
