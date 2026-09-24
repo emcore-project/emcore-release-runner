@@ -32,14 +32,17 @@ jobs:
 
       - name: Verify exact source and PR state
         shell: bash
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
         run: |
           set -euo pipefail
-          pr_json="$(curl -fsSL -H 'Accept: application/vnd.github+json' https://api.github.com/repos/emcore-project/emcore/pulls/1110)"
+          test -n "$EMCORE_SOURCE_TOKEN"
+          pr_json="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer $EMCORE_SOURCE_TOKEN" https://api.github.com/repos/emcore-project/emcore/pulls/1110)"
           test "$(printf '%s' "$pr_json" | jq -r '.head.sha')" = "$TARGET_SHA"
           test "$(printf '%s' "$pr_json" | jq -r '.state')" = "open"
           test "$(printf '%s' "$pr_json" | jq -r '.draft')" = "true"
           test "$(printf '%s' "$pr_json" | jq -r '.merged_at')" = "null"
-          commit_json="$(curl -fsSL -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/emcore-project/emcore/commits/$TARGET_SHA")"
+          commit_json="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer $EMCORE_SOURCE_TOKEN" "https://api.github.com/repos/emcore-project/emcore/commits/$TARGET_SHA")"
           test "$(printf '%s' "$commit_json" | jq -r '.commit.tree.sha')" = "$TARGET_TREE"
           echo "SOURCE_SHA=$TARGET_SHA"
           echo "SOURCE_TREE=$TARGET_TREE"
