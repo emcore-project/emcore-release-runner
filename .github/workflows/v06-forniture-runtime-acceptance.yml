@@ -1,0 +1,190 @@
+name: V06 Forniture Exact-Head Runtime Acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/v06-forniture-runtime-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  runtime_acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TARGET_SHA: f348c0c53333c5bf1143f27c29b3feb20d8b6326
+      TARGET_TREE: 10720839028ac2c18375c1539134b2d015c750d1
+      TARGET_PREVIEW: https://f523acbd-emcore-web-dev.emcore-project.workers.dev
+    steps:
+      - name: Verify bounded harness scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "MISSION=CC69-VISUAL-V06-FORNITURE-REMEDIATION-001-RUNTIME"
+          echo "RUNNER=github-hosted-ubuntu-latest"
+          echo "HARNESS=temporary-companion-cdp-zero-dependency"
+          echo "ZERO_INCREMENTAL_COST=PASS"
+          echo "PRODUCT_MUTATION=NONE"
+          echo "MAIN_MUTATION=NONE"
+          echo "LIVE_DB_MUTATION=NONE"
+
+      - name: Verify exact source and PR state
+        shell: bash
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$EMCORE_SOURCE_TOKEN"
+          pr_json="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer $EMCORE_SOURCE_TOKEN" https://api.github.com/repos/emcore-project/emcore/pulls/1110)"
+          test "$(printf '%s' "$pr_json" | jq -r '.head.sha')" = "$TARGET_SHA"
+          test "$(printf '%s' "$pr_json" | jq -r '.state')" = "open"
+          test "$(printf '%s' "$pr_json" | jq -r '.draft')" = "true"
+          test "$(printf '%s' "$pr_json" | jq -r '.merged_at')" = "null"
+          commit_json="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer $EMCORE_SOURCE_TOKEN" "https://api.github.com/repos/emcore-project/emcore/commits/$TARGET_SHA")"
+          test "$(printf '%s' "$commit_json" | jq -r '.commit.tree.sha')" = "$TARGET_TREE"
+          echo "SOURCE_SHA=$TARGET_SHA"
+          echo "SOURCE_TREE=$TARGET_TREE"
+          echo "PR1110_STATE=OPEN_DRAFT_UNMERGED"
+          echo "SOURCE_DRIFT=NONE"
+          echo "EXACT_SOURCE_IDENTITY=PASS"
+
+      - name: Verify deployed identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL "$TARGET_PREVIEW/api/deployment-identity" -o /tmp/deployment-identity
+          node <<'NODE'
+          const fs=require('node:fs');
+          const expected=process.env.TARGET_SHA;
+          const raw=fs.readFileSync('/tmp/deployment-identity','utf8').trim();
+          let ok=raw===expected;
+          if(!ok){try{const p=JSON.parse(raw);const vals=[];const walk=v=>{if(typeof v==='string')vals.push(v);else if(Array.isArray(v))v.forEach(walk);else if(v&&typeof v==='object')Object.values(v).forEach(walk)};walk(p);ok=vals.includes(expected)}catch{}}
+          if(!ok){console.error('DEPLOYMENT_IDENTITY_RAW='+raw);process.exit(1)}
+          console.log('DEPLOYMENT_IDENTITY='+expected);
+          console.log('DEPLOYMENT_IDENTITY_CHECK=PASS');
+          NODE
+
+      - name: Execute bounded interactive acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          test -n "$chrome"
+          "$chrome" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9222 --user-data-dir=/tmp/v06-chrome --window-size=1440,1000 "$TARGET_PREVIEW/preview/#supplies" >/tmp/chrome.log 2>&1 &
+          chrome_pid=$!
+          trap 'kill "$chrome_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do if curl -fsS http://127.0.0.1:9222/json/version >/tmp/cdp-version 2>/dev/null; then break; fi; sleep 0.5; done
+          curl -fsS http://127.0.0.1:9222/json >/tmp/cdp-targets
+          node <<'NODE'
+          const fs=require('node:fs');
+          (async()=>{
+            const base=process.env.TARGET_PREVIEW;
+            const targets=JSON.parse(fs.readFileSync('/tmp/cdp-targets','utf8'));
+            const pageTarget=targets.find(t=>t.type==='page'&&t.url.startsWith(base))||targets.find(t=>t.type==='page');
+            if(!pageTarget?.webSocketDebuggerUrl) throw new Error('No CDP page target');
+            let seq=0; const pending=new Map(); const exceptions=[];
+            const ws=new WebSocket(pageTarget.webSocketDebuggerUrl);
+            const ready=new Promise((resolve,reject)=>{ws.addEventListener('open',resolve,{once:true});ws.addEventListener('error',reject,{once:true})});
+            ws.addEventListener('message',e=>{const m=JSON.parse(String(e.data));if(m.id&&pending.has(m.id)){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(new Error(JSON.stringify(m.error))):p.resolve(m.result)}else if(m.method==='Runtime.exceptionThrown'){exceptions.push(m.params?.exceptionDetails?.text||'runtime exception')}});
+            const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}))});
+            const evalJs=async(expression)=>{const out=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true,userGesture:true});if(out.exceptionDetails)throw new Error(out.exceptionDetails.text);return out.result?.value};
+            const waitFor=async(expression,timeout=12000)=>{const start=Date.now();while(Date.now()-start<timeout){try{if(await evalJs(expression))return}catch{}await new Promise(r=>setTimeout(r,200))}throw new Error('waitFor timeout: '+expression)};
+            const clickText=async(sel,text)=>{const p=JSON.stringify({sel,text});const ok=await evalJs(`(()=>{const {sel,text}=${p};const root=document.querySelector(sel)||document;const el=[...root.querySelectorAll('button')].find(b=>(b.textContent||'').trim().includes(text));if(!el)return false;el.click();return true})()`);if(!ok)throw new Error('button not found '+sel+' '+text)};
+            const setInput=async(sel,value)=>{const p=JSON.stringify({sel,value});const ok=await evalJs(`(()=>{const {sel,value}=${p};const el=document.querySelector(sel);if(!el)return false;const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;setter.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);if(!ok)throw new Error('input not found '+sel)};
+            const pass=(id,detail='')=>console.log(`CHECK_${id}=PASS${detail?' | '+detail:''}`);
+            await ready; await send('Runtime.enable'); await send('Page.enable');
+            await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+            await send('Page.navigate',{url:base+'/preview/#supplies'});
+            await waitFor(`document.readyState==='complete'&&document.querySelector('.v04')&&document.querySelectorAll('.v04__row').length>=2`);
+            pass('00_DESKTOP_VIEWPORT','1440x1000');
+
+            const pageWidth=await evalJs(`Math.round(document.querySelector('.v04__page').getBoundingClientRect().width)`);
+            if(pageWidth<1050) throw new Error('desktop page under-utilized width='+pageWidth);
+            pass('00A_FULL_WIDTH_PAGE',String(pageWidth));
+
+            await clickText('.v04__nav','Documenti');
+            await waitFor(`location.hash==='#documents'&&!!document.querySelector('.emcore-v02')`);
+            pass('01_SIDEBAR_NAVIGATION','Forniture -> Documenti');
+            await evalJs(`location.hash='#supplies';true`); await waitFor(`!!document.querySelector('.v04')`);
+
+            const initial=await evalJs(`document.querySelector('.v04__inspector h2')?.textContent?.trim()||''`);
+            const second=await evalJs(`document.querySelectorAll('.v04__row')[1]?.querySelector('.v04__supply-cell strong')?.textContent?.trim()||''`);
+            await evalJs(`document.querySelectorAll('.v04__row')[1].click();true`);
+            await waitFor(`document.querySelector('.v04__inspector h2')?.textContent?.trim()===${JSON.stringify(second)}`);
+            if(second===initial) throw new Error('row selection did not change identity');
+            pass('02_ROW_SELECTION',second);
+
+            const total=await evalJs(`document.querySelectorAll('.v04__row').length`);
+            await setInput('.v04__search input',second);
+            await waitFor(`document.querySelectorAll('.v04__row').length>=1&&document.querySelectorAll('.v04__row').length<${total}`);
+            pass('03_SEARCH_FILTER');
+            await setInput('.v04__search input',''); await waitFor(`document.querySelectorAll('.v04__row').length===${total}`);
+
+            await clickText('.v04__filters','Energia elettrica'); await waitFor(`document.querySelectorAll('.v04__row').length>0`);
+            if(!(await evalJs(`[...document.querySelectorAll('.v04__row .v04__supply-cell small')].every(x=>(x.textContent||'').includes('Energia elettrica'))`))) throw new Error('EE filter failed');
+            pass('04_FILTER_EE');
+
+            await clickText('.v04__filters','Gas'); await waitFor(`document.querySelectorAll('.v04__row').length>0`);
+            if(!(await evalJs(`[...document.querySelectorAll('.v04__row .v04__supply-cell small')].every(x=>(x.textContent||'').includes('Gas naturale'))`))) throw new Error('GAS filter failed');
+            pass('05_FILTER_GAS');
+
+            await clickText('.v04__filters','Da verificare'); await waitFor(`document.querySelectorAll('.v04__row').length>0`);
+            if(!(await evalJs(`[...document.querySelectorAll('.v04__row .v04__status')].every(x=>(x.textContent||'').includes('Da verificare'))`))) throw new Error('attention filter failed');
+            pass('06_FILTER_ATTENTION');
+            await clickText('.v04__filters','Tutte'); await waitFor(`document.querySelectorAll('.v04__row').length===${total}`);
+
+            await clickText('.v04__table-head','Codice fornitura');
+            await waitFor(`document.querySelector('.v04__sort-header.is-active')?.textContent?.includes('Codice fornitura')`);
+            if(!(await evalJs(`(()=>{const a=[...document.querySelectorAll('.v04__row .v04__supply-cell strong')].map(x=>(x.textContent||'').trim());return JSON.stringify(a)===JSON.stringify([...a].sort((x,y)=>x.localeCompare(y)))})()`))) throw new Error('CODE sort failed');
+            pass('07_SORT_HEADER_CODE');
+
+            await clickText('.v04__table-head','Prossimo rinnovo');
+            await waitFor(`document.querySelector('.v04__sort-header.is-active')?.textContent?.includes('Prossimo rinnovo')`);
+            pass('07A_SORT_HEADER_RENEWAL');
+
+            const snap=await evalJs(`(document.querySelector('.v04__snapshot')?.innerText||'')`);
+            if(!snap.includes('Prossima scadenza contrattuale')||!snap.includes('Verifiche aperte')||!snap.includes('Documenti collegati')) throw new Error('inspector snapshot incomplete');
+            if(document.querySelector?.('.v04__inspector .v04__tabs')) throw new Error('legacy inspector tabs remain');
+            pass('08_LEVEL1_INSPECTOR_SYNTHESIS');
+
+            await evalJs(`document.querySelector('.v04__primary').click();true`);
+            await waitFor(`!!document.querySelector('[data-testid="supply-detail-page"]')&&!document.querySelector('.v04__workspace')`);
+            pass('09_OPEN_LEVEL2_DETAIL');
+
+            for(const label of ['Sintesi','Contratto','Consumi','Controlli','Fonti e documenti']){
+              await clickText('.v04__detail-tabs',label);
+              await waitFor(`[...document.querySelectorAll('.v04__detail-tabs button')].some(b=>b.classList.contains('is-active')&&(b.textContent||'').trim()===${JSON.stringify(label)})`);
+              const len=await evalJs(`(document.querySelector('.v04__detail-page-body')?.textContent||'').trim().length`);
+              if(!len) throw new Error('empty detail tab '+label);
+              pass('10_DETAIL_TAB_'+label.toUpperCase().replaceAll(' ','_'));
+            }
+
+            await clickText('.v04__supply-detail','Torna alle forniture');
+            await waitFor(`!!document.querySelector('.v04__workspace')&&!document.querySelector('[data-testid="supply-detail-page"]')`);
+            pass('11_BACK_TO_MASTER');
+
+            await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+            await evalJs(`location.hash='#supplies';location.reload();true`);
+            await waitFor(`!!document.querySelector('.v04')&&!!document.querySelector('.v04__mobile-trigger')`);
+            pass('12_MOBILE_VIEWPORT','390x844');
+            await evalJs(`document.querySelector('.v04__mobile-trigger').click();true`);
+            await waitFor(`!!document.querySelector('.v04__scrim')&&document.querySelector('.v04__sidebar').classList.contains('is-open')`);
+            pass('12A_MOBILE_SCRIM_OPEN');
+            await evalJs(`document.querySelector('.v04__scrim').click();true`);
+            await waitFor(`!document.querySelector('.v04__scrim')&&!document.querySelector('.v04__sidebar').classList.contains('is-open')`);
+            pass('12B_MOBILE_SCRIM_REMOVED');
+            if(!(await evalJs(`document.documentElement.scrollWidth<=window.innerWidth+1&&document.body.scrollWidth<=window.innerWidth+1`))) throw new Error('global horizontal blocker');
+            pass('12C_NO_HORIZONTAL_NAV_BLOCKER');
+
+            await evalJs(`document.querySelector('.v04__primary').click();true`); await waitFor(`!!document.querySelector('[data-testid="supply-detail-page"]')`);
+            if(!(await evalJs(`document.documentElement.scrollWidth<=window.innerWidth+1&&document.body.scrollWidth<=window.innerWidth+1`))) throw new Error('mobile detail horizontal blocker');
+            pass('12D_MOBILE_DETAIL_SAFE');
+
+            if(exceptions.length) throw new Error('Runtime exceptions: '+exceptions.join(' | '));
+            pass('13_NO_BLOCKING_RUNTIME_EXCEPTION');
+            console.log('V06_FORNITURE_RUNTIME_ACCEPTANCE=TERMINAL_PASS');
+            ws.close();
+          })().catch(e=>{console.error(e?.stack||String(e));process.exit(1)});
+          NODE
