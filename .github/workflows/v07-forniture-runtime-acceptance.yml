@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      TARGET_SHA: 6ab70036677ef99fe3dd6095d2bdeb9fb445653b
-      TARGET_TREE: b9e58db50727d0b19f7213caf63cc27ae3d3f073
+      TARGET_SHA: 85230e58c8e46363f931ddf3b1f0c5176ab5a2fc
+      TARGET_TREE: 56d0871762699c5f77a5851723f896f2dfe83810
       TARGET_PREVIEW: https://visual-v04-forniture-cleanroom-emcore-web-dev.emcore-project.workers.dev
     steps:
       - name: Verify bounded harness scope
