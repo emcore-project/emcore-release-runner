@@ -194,6 +194,13 @@ jobs:
           await send('Runtime.enable');
           await send('Page.enable');
           await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+          await send('Page.navigate', { url: base + '/#supplies' });
+          await waitFor(`document.readyState === 'complete'`);
+          console.log('PAGE_URL=' + await evalJs(`location.href`));
+          console.log('PAGE_TITLE=' + await evalJs(`document.title`));
+          console.log('BODY_PREFIX=' + String(await evalJs(`(document.body?.innerText || '').slice(0,300)`)).replaceAll('\\n',' | '));
+          console.log('V04_ROOT_COUNT=' + await evalJs(`document.querySelectorAll('.v04').length`));
+          console.log('V04_ROW_COUNT=' + await evalJs(`document.querySelectorAll('.v04__row').length`));
           await waitFor(`document.querySelector('.v04') && document.querySelectorAll('.v04__row').length >= 2`);
           pass('00_DESKTOP_VIEWPORT','1440x1000');
 
