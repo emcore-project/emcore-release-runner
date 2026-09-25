@@ -283,18 +283,31 @@ jobs:
             pass('FILTER_HOVER_DISTINCT',JSON.stringify(hoverState));
             pass('ARIA_PRESSED_NON_COLOR_STATE');
 
-            const eeChart=await evalJs(`(()=>{const chart=document.querySelector('.v04__chart.is-ee');if(!chart)return null;const bars=[...chart.querySelectorAll('i')];return {cls:chart.className,label:chart.getAttribute('aria-label'),colors:bars.map(e=>getComputedStyle(e).backgroundColor)}})()`);
-            if(!eeChart||!eeChart.cls.includes('is-ee')||!eeChart.label?.includes('Energia elettrica')||!eeChart.colors.length) throw new Error('EE chart context '+JSON.stringify(eeChart));
+            await clickText('.v04__filters','Energia elettrica');
+            await waitFor(`document.querySelectorAll('.v04__row').length>0`);
+            await evalJs(`document.querySelector('.v04__row .v04__row-detail').click();true`);
+            await waitFor(`!!document.querySelector('[data-testid="supply-detail-page"]')`);
+            const eeChart=await evalJs(`(()=>{const chart=document.querySelector('.v04__chart.is-ee');if(!chart)return null;const bars=[...chart.querySelectorAll('i')];return {cls:chart.className,label:chart.getAttribute('aria-label'),colors:bars.map(e=>getComputedStyle(e).backgroundColor),labels:[...chart.querySelectorAll('small')].map(e=>(e.textContent||'').trim())}})()`);
+            if(!eeChart||!eeChart.cls.includes('is-ee')||!eeChart.label?.includes('Energia elettrica')||!eeChart.colors.length||eeChart.colors.some(c=>!['rgb(224, 168, 0)','rgb(169, 120, 0)'].includes(c))) throw new Error('EE chart context '+JSON.stringify(eeChart));
+            if(!eeChart.labels.length||eeChart.labels.some(x=>!x)) throw new Error('EE chart labels '+JSON.stringify(eeChart));
             pass('EE_CHART_AMBER_GOLD_FAMILY',JSON.stringify(eeChart));
+            await clickText('.v04__supply-detail','Torna alle forniture');
+            await waitFor(`!!document.querySelector('.v04__workspace')`);
 
-            await clickText('.v04__filters','Gas'); await waitFor(`document.querySelectorAll('.v04__row').length>0`);
-            await evalJs(`document.querySelector('.v04__row .v04__row-select').click();true`); await sleep(120);
-            const gasChart=await evalJs(`(()=>{const chart=document.querySelector('.v04__chart.is-gas');if(!chart)return null;const bars=[...chart.querySelectorAll('i')];return {cls:chart.className,label:chart.getAttribute('aria-label'),colors:bars.map(e=>getComputedStyle(e).backgroundColor)}})()`);
-            if(!gasChart||!gasChart.cls.includes('is-gas')||!gasChart.label?.includes('Gas naturale')||!gasChart.colors.length) throw new Error('GAS chart context '+JSON.stringify(gasChart));
+            await clickText('.v04__filters','Gas');
+            await waitFor(`document.querySelectorAll('.v04__row').length>0`);
+            await evalJs(`document.querySelector('.v04__row .v04__row-detail').click();true`);
+            await waitFor(`!!document.querySelector('[data-testid="supply-detail-page"]')`);
+            const gasChart=await evalJs(`(()=>{const chart=document.querySelector('.v04__chart.is-gas');if(!chart)return null;const bars=[...chart.querySelectorAll('i')];return {cls:chart.className,label:chart.getAttribute('aria-label'),colors:bars.map(e=>getComputedStyle(e).backgroundColor),labels:[...chart.querySelectorAll('small')].map(e=>(e.textContent||'').trim())}})()`);
+            if(!gasChart||!gasChart.cls.includes('is-gas')||!gasChart.label?.includes('Gas naturale')||!gasChart.colors.length||gasChart.colors.some(c=>!['rgb(47, 128, 237)','rgb(24, 90, 188)'].includes(c))) throw new Error('GAS chart context '+JSON.stringify(gasChart));
+            if(!gasChart.labels.length||gasChart.labels.some(x=>!x)) throw new Error('GAS chart labels '+JSON.stringify(gasChart));
             pass('GAS_CHART_BLUE_FAMILY',JSON.stringify(gasChart));
             pass('CHART_LABELS_READABILITY');
             pass('COMMODITY_COLOR_STATUS_SEMANTICS_SEPARATE');
-            await clickText('.v04__filters','Tutte'); await waitFor(`document.querySelectorAll('.v04__row').length>=2`);
+            await clickText('.v04__supply-detail','Torna alle forniture');
+            await waitFor(`!!document.querySelector('.v04__workspace')`);
+            await clickText('.v04__filters','Tutte');
+            await waitFor(`document.querySelectorAll('.v04__row').length>=2`);
 
             const initial=await evalJs(`document.querySelector('.v04__inspector h2')?.textContent?.trim()||''`);
             const second=await evalJs(`document.querySelectorAll('.v04__row')[1]?.querySelector('.v04__supply-code')?.textContent?.trim()||''`);
