@@ -106,7 +106,7 @@ jobs:
         run: |
           cat > /tmp/emcore-chrome <<'EOF'
           #!/bin/sh
-          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          exec /usr/bin/google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-address=127.0.0.1 "$@"
           EOF
           chmod +x /tmp/emcore-chrome
           CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
