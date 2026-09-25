@@ -107,7 +107,7 @@ jobs:
           test -n "$chrome"
           echo "BROWSER_BINARY=$chrome"
           curl -fsSL --retry 2 --retry-delay 1 "$TARGET_PREVIEW/preview/" -o /tmp/v11-preview-preflight.html
-          test -s /tmp/v10-preview-preflight.html
+          test -s /tmp/v11-preview-preflight.html
           echo "PREVIEW_HTTP_PREFLIGHT=PASS"
           "$chrome" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9222 --user-data-dir=/tmp/v11-chrome --window-size=1440,1000 "$TARGET_PREVIEW/preview/#supplies" >/tmp/chrome.log 2>&1 &
           chrome_pid=$!
