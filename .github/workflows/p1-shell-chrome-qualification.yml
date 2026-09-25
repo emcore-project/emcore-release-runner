@@ -129,8 +129,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -R -q -- "--emcore-v13-shell-sidebar" dist/client dist/emcore_web_dev
-          grep -R -q -- "P1 SHELL / CHROME PILOT" dist/client dist/emcore_web_dev
+          test -d apps/web/dist
+          grep -R -q -- "--emcore-v13-shell-sidebar" apps/web/dist
+          grep -R -q -- "P1 SHELL / CHROME PILOT" apps/web/dist
           echo "P1_PRESENT_IN_RUNTIME_BUNDLE=PASS"
 
       - name: Governed safety boundary
