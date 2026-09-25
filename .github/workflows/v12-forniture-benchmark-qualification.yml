@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      TARGET_SHA: ee104b02e042d611b2252f372208d42a9d809006
-      TARGET_TREE: caf527395719a4895fc38fad473104f746b3928e
+      TARGET_SHA: fed0479ba84b59fd86092b32b0172d6f7cc92920
+      TARGET_TREE: dd7e3f61b667be12a8859858f142aa5d52bd624d
       TARGET_PREVIEW: https://visual-v04-forniture-cleanroom-emcore-web-dev.emcore-project.workers.dev
     steps:
       - name: Boundaries
