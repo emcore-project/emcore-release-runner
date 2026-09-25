@@ -309,6 +309,9 @@ jobs:
             await clickText('.v04__filters','Tutte');
             await waitFor(`document.querySelectorAll('.v04__row').length>=2`);
 
+            const firstForSelection=await evalJs(`document.querySelectorAll('.v04__row')[0]?.querySelector('.v04__supply-code')?.textContent?.trim()||''`);
+            await evalJs(`document.querySelectorAll('.v04__row')[0].querySelector('.v04__row-select').click();true`);
+            await waitFor(`document.querySelector('.v04__inspector h2')?.textContent?.trim()===${JSON.stringify(firstForSelection)}`);
             const initial=await evalJs(`document.querySelector('.v04__inspector h2')?.textContent?.trim()||''`);
             const second=await evalJs(`document.querySelectorAll('.v04__row')[1]?.querySelector('.v04__supply-code')?.textContent?.trim()||''`);
             await evalJs(`document.querySelectorAll('.v04__row')[1].querySelector('.v04__row-select').click();true`);
