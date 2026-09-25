@@ -149,13 +149,15 @@ jobs:
               try{
                 await waitFor(`document.readyState==='complete'&&!!document.querySelector('.v04')`,8000);
               }catch(firstError){
-                const firstDiag=await evalJs(`({href:location.href,title:document.title,ready:document.readyState,body:(document.body?.innerText||'').slice(0,700)})`).catch(()=>null);
+                const firstDiag=await evalJs(`({href:location.href,title:document.title,ready:document.readyState,body:(document.body?.innerText||'').slice(0,700),html:(document.documentElement?.outerHTML||'').slice(0,2500),scripts:[...document.scripts].map(s=>s.src||'[inline]'),resources:performance.getEntriesByType('resource').map(e=>({name:e.name,initiatorType:e.initiatorType,duration:e.duration})).slice(-30)})`).catch(()=>null);
+                console.log('RUNTIME_EXCEPTIONS_1='+JSON.stringify(exceptions));
                 console.log('BROWSER_LOAD_DIAG_1='+JSON.stringify(firstDiag));
                 await send('Page.navigate',{url:base+'/preview/#supplies'});
                 try{
                   await waitFor(`document.readyState==='complete'&&!!document.querySelector('.v04')`,8000);
                 }catch(secondError){
-                  const secondDiag=await evalJs(`({href:location.href,title:document.title,ready:document.readyState,body:(document.body?.innerText||'').slice(0,700)})`).catch(()=>null);
+                  const secondDiag=await evalJs(`({href:location.href,title:document.title,ready:document.readyState,body:(document.body?.innerText||'').slice(0,700),html:(document.documentElement?.outerHTML||'').slice(0,2500),scripts:[...document.scripts].map(s=>s.src||'[inline]'),resources:performance.getEntriesByType('resource').map(e=>({name:e.name,initiatorType:e.initiatorType,duration:e.duration})).slice(-30)})`).catch(()=>null);
+                  console.log('RUNTIME_EXCEPTIONS_2='+JSON.stringify(exceptions));
                   console.log('BROWSER_LOAD_DIAG_2='+JSON.stringify(secondDiag));
                   throw secondError;
                 }
