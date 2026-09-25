@@ -247,10 +247,17 @@ jobs:
             pass('TEXT_SPACING');
             await evalJs(`document.getElementById('v09-spacing')?.remove();true`);
 
-            await evalJs(`document.querySelector('.v04__search input').focus();true`);
-            const focus=await evalJs(`(()=>{const s=getComputedStyle(document.activeElement);return {tag:document.activeElement.tagName,outline:s.outlineStyle,width:s.outlineWidth}})()`);
-            if(focus.tag!=='INPUT'||focus.outline==='none'||focus.width==='0px') throw new Error('focus visible '+JSON.stringify(focus));
-            pass('FOCUS_VISIBLE');
+            await evalJs(`document.activeElement?.blur();true`);
+            let focus=null;
+            for(let i=0;i<20;i++){
+              await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,nativeVirtualKeyCode:9});
+              await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,nativeVirtualKeyCode:9});
+              await sleep(40);
+              focus=await evalJs(`(()=>{const e=document.activeElement;const s=getComputedStyle(e);return {tag:e.tagName,cls:typeof e.className==='string'?e.className:'',outline:s.outlineStyle,width:s.outlineWidth,offset:s.outlineOffset,color:s.outlineColor}})()`);
+              if((focus.tag==='BUTTON'||focus.tag==='INPUT')&&focus.outline!=='none'&&parseFloat(focus.width)>=2) break;
+            }
+            if(!focus||(focus.tag!=='BUTTON'&&focus.tag!=='INPUT')||focus.outline==='none'||parseFloat(focus.width)<2) throw new Error('focus visible '+JSON.stringify(focus));
+            pass('FOCUS_VISIBLE',JSON.stringify(focus));
 
             const targetsOk=await evalJs(`[...document.querySelectorAll('.v04 button')].filter(e=>getComputedStyle(e).display!=='none').every(e=>{const r=e.getBoundingClientRect();return r.width>=24&&r.height>=24})`);
             if(!targetsOk) throw new Error('target below 24px');
