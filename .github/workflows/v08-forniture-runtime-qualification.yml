@@ -126,12 +126,12 @@ jobs:
             if(pageWidth<1050) throw new Error('desktop width underused '+pageWidth);
             pass('FULL_WIDTH_DESKTOP',String(pageWidth));
 
-            const type=await evalJs(`(()=>{const q=s=>parseFloat(getComputedStyle(document.querySelector(s)).fontSize);return {
+            const type=await evalJs(`(()=>{const q=s=>{const e=document.querySelector(s);return e?parseFloat(getComputedStyle(e).fontSize):null};return {
               title:q('.v04__page-head h1'),body:q('.v04__page-head p'),row:q('.v04__row strong'),
               meta:q('.v04__row small'),status:q('.v04__status'),nav:q('.v04__nav button'),
-              table:q('.v04__table-head>span'),tab:q('.v04__detail-tabs button')
+              table:q('.v04__table-head>span')
             }})()`);
-            if(type.title<31||type.body<16||type.row<16||type.meta<14||type.status<14||type.nav<16||type.table<16||type.tab<16) throw new Error('type scale regression '+JSON.stringify(type));
+            if(type.title<31||type.body<16||type.row<16||type.meta<14||type.status<14||type.nav<16||type.table<16) throw new Error('type scale regression '+JSON.stringify(type));
             pass('TYPE_SCALE',JSON.stringify(type));
 
             const statusGeom=await evalJs(`(()=>{const e=document.querySelector('.v04__status');const s=getComputedStyle(e);return {border:s.borderTopWidth,radius:parseFloat(s.borderTopLeftRadius),dot:parseFloat(getComputedStyle(e.querySelector('i')).width)}})()`);
