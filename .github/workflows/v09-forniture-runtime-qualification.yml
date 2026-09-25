@@ -80,6 +80,9 @@ jobs:
           set -euo pipefail
           chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
           test -n "$chrome"
+          curl -fsSL --retry 2 --retry-delay 1 "$TARGET_PREVIEW/preview/" -o /tmp/v09-preview-preflight.html
+          test -s /tmp/v09-preview-preflight.html
+          echo "PREVIEW_HTTP_PREFLIGHT=PASS"
           "$chrome" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9222 --user-data-dir=/tmp/v09-chrome --window-size=1440,1000 "$TARGET_PREVIEW/preview/#supplies" >/tmp/chrome.log 2>&1 &
           chrome_pid=$!
           trap 'kill "$chrome_pid" 2>/dev/null || true' EXIT
@@ -112,9 +115,17 @@ jobs:
               await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile});
               try{
                 await waitFor(`document.readyState==='complete'&&document.querySelector('.v04')`,8000);
-              }catch(error){
-                await send('Page.reload',{ignoreCache:false});
-                await waitFor(`document.readyState==='complete'&&document.querySelector('.v04')`,8000);
+              }catch(firstError){
+                const firstDiag=await evalJs(`({href:location.href,title:document.title,ready:document.readyState,body:(document.body?.innerText||'').slice(0,700)})`).catch(()=>null);
+                console.log('BROWSER_LOAD_DIAG_1='+JSON.stringify(firstDiag));
+                await send('Page.navigate',{url:base+'/preview/#supplies'});
+                try{
+                  await waitFor(`document.readyState==='complete'&&document.querySelector('.v04')`,8000);
+                }catch(secondError){
+                  const secondDiag=await evalJs(`({href:location.href,title:document.title,ready:document.readyState,body:(document.body?.innerText||'').slice(0,700)})`).catch(()=>null);
+                  console.log('BROWSER_LOAD_DIAG_2='+JSON.stringify(secondDiag));
+                  throw secondError;
+                }
               }
               if(await evalJs(`!!document.querySelector('[data-testid="supply-detail-page"]')`)){
                 await evalJs(`document.querySelector('.v04__back')?.click();true`);
