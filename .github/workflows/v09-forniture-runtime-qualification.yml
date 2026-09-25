@@ -111,7 +111,11 @@ jobs:
             const load=async(width,height,mobile=false)=>{
               await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile});
               await send('Page.navigate',{url:base+'/preview/#supplies'});
-              await waitFor(`document.readyState==='complete'&&document.querySelector('.v04')&&document.querySelectorAll('.v04__row').length>=2`);
+              await waitFor(`document.readyState==='complete'&&document.querySelector('.v04')`);
+              if(await evalJs(`!!document.querySelector('[data-testid="supply-detail-page"]')`)){
+                await evalJs(`document.querySelector('.v04__back')?.click();true`);
+              }
+              await waitFor(`document.querySelectorAll('.v04__row').length>=2`);
               await sleep(220);
             };
             const viewport=async(width,height,mobile=false)=>{
