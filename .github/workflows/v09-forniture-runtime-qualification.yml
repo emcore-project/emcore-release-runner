@@ -110,8 +110,19 @@ jobs:
             const setInput=async(sel,value)=>{const p=JSON.stringify({sel,value});if(!(await evalJs(`(()=>{const {sel,value}=${p};const e=document.querySelector(sel);if(!e)return false;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}));return true})()`)))throw new Error('input not found')};
             const load=async(width,height,mobile=false)=>{
               await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile});
-              await send('Page.navigate',{url:base+'/preview/#supplies'});
-              await waitFor(`document.readyState==='complete'&&document.querySelector('.v04')`);
+              let loaded=false;
+              for(let attempt=1;attempt<=2;attempt++){
+                await send('Page.navigate',{url:base+'/preview/#supplies'});
+                try{
+                  await waitFor(`document.readyState==='complete'&&document.querySelector('.v04')`,8000);
+                  loaded=true;
+                  break;
+                }catch(error){
+                  if(attempt===2) throw error;
+                  await sleep(500);
+                }
+              }
+              if(!loaded) throw new Error('bounded page load retry exhausted');
               if(await evalJs(`!!document.querySelector('[data-testid="supply-detail-page"]')`)){
                 await evalJs(`document.querySelector('.v04__back')?.click();true`);
               }
