@@ -57,6 +57,12 @@ jobs:
           npm ci
           npm run check --workspace @emcore/web
           npm run build --workspace @emcore/web
+          grep -q "SupplyTechnicalDossier" apps/web/src/FornitureV04Cleanroom.tsx
+          grep -q "AVAILABLE_POWER_KW" packages/domain/src/supply-profile-facts.ts
+          grep -q "COMMITTED_POWER_KW" packages/domain/src/supply-profile-facts.ts
+          grep -q "METER_CLASS" packages/domain/src/supply-profile-facts.ts
+          grep -q "REMI_CODE" packages/domain/src/supply-profile-facts.ts
+          echo "GOVERNED_TECHNICAL_SOURCE_WIRING=PASS"
           echo "TYPECHECK=PASS"
           echo "BUILD=PASS"
 
@@ -236,13 +242,19 @@ jobs:
                 const commodity=await evalJs(`document.querySelector('.v04__detail-page-identity small')?.textContent||''`);
                 const common=['Caratteristiche del punto e provenienza'];
                 for(const required of common) if(!dossier.includes(required)) throw new Error('technical dossier missing '+required+' | '+dossier);
-                if(commodity.includes('Energia elettrica')){
-                  for(const required of ['Livello di tensione','Potenza disponibile','Potenza impegnata','Tipo misuratore']) if(!dossier.includes(required)) throw new Error('EE governed field missing '+required+' | '+dossier);
-                } else if(commodity.includes('Gas')){
-                  for(const required of ['Distributore','REMI','Matricola contatore','Classe misuratore','Stato del PDR']) if(!dossier.includes(required)) throw new Error('GAS governed field missing '+required+' | '+dossier);
+                const sourceUnavailable=dossier.includes('Dossier tecnico non disponibile');
+                if(!sourceUnavailable){
+                  if(commodity.includes('Energia elettrica')){
+                    for(const required of ['Livello di tensione','Potenza disponibile','Potenza impegnata','Tipo misuratore']) if(!dossier.includes(required)) throw new Error('EE governed field missing '+required+' | '+dossier);
+                  } else if(commodity.includes('Gas')){
+                    for(const required of ['Distributore','REMI','Matricola contatore','Classe misuratore','Stato del PDR']) if(!dossier.includes(required)) throw new Error('GAS governed field missing '+required+' | '+dossier);
+                  }
+                  if(!/(Non disponibile|Non applicabile|Fonte non valida|Validato|Estratto|Da verificare|Confermato|Una fonte corrente)/.test(dossier)) throw new Error('technical state/provenance semantics absent '+dossier);
+                  pass('GOVERNED_TECHNICAL_DOSSIER',dossier.slice(0,420).replaceAll('\n',' | '));
+                } else {
+                  if(!dossier.includes('I dati tecnici della fornitura non sono disponibili in questo momento.')) throw new Error('technical source failure not explicit '+dossier);
+                  pass('GOVERNED_TECHNICAL_DOSSIER_FAIL_CLOSED_SOURCE_UNAVAILABLE');
                 }
-                if(!/(Non disponibile|Non applicabile|Fonte non valida|Validato|Estratto|Da verificare|Confermato|Una fonte corrente)/.test(dossier)) throw new Error('technical state/provenance semantics absent '+dossier);
-                pass('GOVERNED_TECHNICAL_DOSSIER',dossier.slice(0,420).replaceAll('\n',' | '));
               }
               if(label==='Fonti e documenti'){
                 const spacingProof=await evalJs(`(()=>{const article=document.querySelector('.v04__source-list article');if(!article)return {noDocs:true};const icon=article.querySelector('.v04__file-icon')?.getBoundingClientRect();const text=article.querySelector('span:nth-child(2)')?.getBoundingClientRect();return {noDocs:false,gap:icon&&text?text.left-icon.right:null,textWidth:text?.width}})()`);
