@@ -99,7 +99,7 @@ jobs:
       - name: Runtime V11 acceptance matrix
         run: |
           set -euo pipefail
-          chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
           test -n "$chrome"
           curl -fsSL --retry 2 --retry-delay 1 "$TARGET_PREVIEW/preview/" -o /tmp/v11-preview-preflight.html
           test -s /tmp/v10-preview-preflight.html
