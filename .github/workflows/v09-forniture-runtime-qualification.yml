@@ -114,13 +114,13 @@ jobs:
             const load=async(width,height,mobile=false)=>{
               await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile});
               try{
-                await waitFor(`document.readyState==='complete'&&document.querySelector('.v04')`,8000);
+                await waitFor(`document.readyState==='complete'&&!!document.querySelector('.v04')`,8000);
               }catch(firstError){
                 const firstDiag=await evalJs(`({href:location.href,title:document.title,ready:document.readyState,body:(document.body?.innerText||'').slice(0,700)})`).catch(()=>null);
                 console.log('BROWSER_LOAD_DIAG_1='+JSON.stringify(firstDiag));
                 await send('Page.navigate',{url:base+'/preview/#supplies'});
                 try{
-                  await waitFor(`document.readyState==='complete'&&document.querySelector('.v04')`,8000);
+                  await waitFor(`document.readyState==='complete'&&!!document.querySelector('.v04')`,8000);
                 }catch(secondError){
                   const secondDiag=await evalJs(`({href:location.href,title:document.title,ready:document.readyState,body:(document.body?.innerText||'').slice(0,700)})`).catch(()=>null);
                   console.log('BROWSER_LOAD_DIAG_2='+JSON.stringify(secondDiag));
