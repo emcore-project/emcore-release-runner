@@ -100,7 +100,12 @@ jobs:
         run: |
           set -euo pipefail
           chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$chrome" ]; then
+            npx --yes playwright@1.55.0 install chromium >/tmp/playwright-install.log 2>&1
+            chrome="$(find "$HOME/.cache/ms-playwright" -type f \( -path '*/chrome-linux/chrome' -o -path '*/chrome-linux64/chrome' \) -print -quit)"
+          fi
           test -n "$chrome"
+          echo "BROWSER_BINARY=$chrome"
           curl -fsSL --retry 2 --retry-delay 1 "$TARGET_PREVIEW/preview/" -o /tmp/v11-preview-preflight.html
           test -s /tmp/v10-preview-preflight.html
           echo "PREVIEW_HTTP_PREFLIGHT=PASS"
