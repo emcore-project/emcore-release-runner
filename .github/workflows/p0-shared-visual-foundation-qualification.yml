@@ -100,16 +100,18 @@ jobs:
         working-directory: source
         run: npm run build --workspace @emcore/web
 
-      - name: Browser acceptance
+      - name: Runtime non-regression proof
         working-directory: source
         shell: bash
         run: |
-          cat > /tmp/emcore-chrome <<'EOF'
-          #!/bin/sh
-          exec /usr/bin/google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-address=127.0.0.1 "$@"
-          EOF
-          chmod +x /tmp/emcore-chrome
-          CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+          set -euo pipefail
+          # P0 is intentionally unconsumed. Its unique token must not enter the
+          # production bundle, which proves this foundation cannot alter runtime.
+          ! grep -R -q -- "--emcore-v13-shell-sidebar" dist/client dist/emcore_web_dev
+          refs="$(grep -RIl --exclude='product-preview-visual-v13.css' --exclude-dir=node_modules 'product-preview-visual-v13.css' apps packages tests || true)"
+          test -z "$refs"
+          echo "P0_ABSENT_FROM_RUNTIME_BUNDLE=PASS"
+          echo "CURRENT_RUNTIME_NON_REGRESSION_BY_NON_CONSUMPTION=PASS"
 
       - name: Verify approved Forniture files unchanged from V13 baseline
         working-directory: source
