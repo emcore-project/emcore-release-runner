@@ -274,8 +274,10 @@ jobs:
             pass('FILTER_ACTIVE_BLUE_FAMILY',JSON.stringify(filterInactive.active));
             pass('ACTIVE_FILTER_WEAKER_THAN_HEADER');
 
-            const hoverFilter=await evalJs(`document.querySelector('.v04__filters button[aria-pressed="false"]').dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));true`);
-            await sleep(80);
+            const hoverRect=await evalJs(`(()=>{const e=document.querySelector('.v04__filters button[aria-pressed="false"]');if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`);
+            if(!hoverRect) throw new Error('V13 inactive filter hover target missing');
+            await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:hoverRect.x,y:hoverRect.y});
+            await sleep(120);
             const hoverState=await evalJs(`(()=>{const e=document.querySelector('.v04__filters button[aria-pressed="false"]');const s=getComputedStyle(e);return {bg:s.backgroundColor,border:s.borderTopColor,color:s.color}})()`);
             if(!hoverState||hoverState.bg===filterInactive.inactive.bg) throw new Error('V13 filter hover not distinct '+JSON.stringify({before:filterInactive.inactive,hover:hoverState}));
             pass('FILTER_HOVER_DISTINCT',JSON.stringify(hoverState));
