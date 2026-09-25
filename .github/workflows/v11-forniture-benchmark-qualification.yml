@@ -206,8 +206,8 @@ jobs:
 
             await evalJs(`(()=>{const e=document.querySelector('.v04__row-detail');e.scrollIntoView({block:'nearest',inline:'nearest'});return true})()`);
             await sleep(120);
-            const actionCenter=await evalJs(`(()=>{const e=document.querySelector('.v04__row-detail');const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,left:r.left,right:r.right}})()`);
-            if(actionCenter.x<0||actionCenter.x>innerWidth) throw new Error('detail action not in pointer viewport '+JSON.stringify(actionCenter));
+            const actionCenter=await evalJs(`(()=>{const e=document.querySelector('.v04__row-detail');const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,left:r.left,right:r.right,viewport:innerWidth}})()`);
+            if(actionCenter.x<0||actionCenter.x>actionCenter.viewport) throw new Error('detail action not in pointer viewport '+JSON.stringify(actionCenter));
             await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:actionCenter.x,y:actionCenter.y});
             await sleep(180);
             const hoverAffordance=await evalJs(`(()=>{const e=document.querySelector('.v04__row-detail-affordance');const s=getComputedStyle(e);return {opacity:parseFloat(s.opacity),visibility:s.visibility,text:(e.textContent||'').trim()}})()`);
