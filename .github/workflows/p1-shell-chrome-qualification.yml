@@ -131,7 +131,7 @@ jobs:
           set -euo pipefail
           test -d apps/web/dist
           grep -R -q -- "--emcore-v13-shell-sidebar" apps/web/dist
-          grep -R -q -- "P1 SHELL / CHROME PILOT" apps/web/dist
+          grep -R -q -- ".emcore-v02__org-selector" apps/web/dist
           echo "P1_PRESENT_IN_RUNTIME_BUNDLE=PASS"
 
       - name: Governed safety boundary
