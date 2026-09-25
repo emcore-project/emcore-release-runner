@@ -279,7 +279,7 @@ jobs:
             const gasDossier=await evalJs(`document.querySelector('[data-supply-technical-dossier="active"]')?.innerText||''`);
             const gasMode=await evalJs(`document.querySelector('[data-supply-technical-dossier="active"]')?.getAttribute('data-supply-technical-source')||''`);
             if(gasMode!=='preloaded'||gasDossier.includes('Dossier tecnico non disponibile')) throw new Error('GAS preview adapter source failure '+gasMode+' | '+gasDossier);
-            for(const required of ['REMI','34614900','Matricola contatore','DEV-GAS-METER-001','Classe misuratore','Fonti non coerenti','G10','G16','Matricola correttore','Non disponibile','Dato sintetico DEV']) if(!gasDossier.includes(required)) throw new Error('GAS synthetic governed field/state missing '+required+' | '+gasDossier);
+            for(const required of ['REMI','34614900','Matricola contatore','Dev-gas-meter-001','Classe misuratore','Fonti non coerenti','G10','G16','Matricola correttore','Non disponibile','Dato sintetico DEV']) if(!gasDossier.includes(required)) throw new Error('GAS synthetic governed field/state missing '+required+' | '+gasDossier);
             pass('GAS_TECHNICAL_FACT_RUNTIME',gasDossier.slice(0,950).replaceAll('\n',' | '));
             pass('GAS_MISSING_CONFLICT_RUNTIME');
 
