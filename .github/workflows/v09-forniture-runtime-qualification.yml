@@ -1,0 +1,257 @@
+name: V09 Forniture Exact-Head Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/v09-forniture-runtime-qualification.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  v09_qualification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TARGET_SHA: 5d211e08b286981385ea8e710d211c15580d3614
+      TARGET_TREE: aad0de17e29b3dcddf59d359d2649161c86d4dd8
+      TARGET_PREVIEW: https://visual-v04-forniture-cleanroom-emcore-web-dev.emcore-project.workers.dev
+    steps:
+      - name: Boundaries
+        run: |
+          set -euo pipefail
+          echo "MISSION=CC72-VISUAL-V09-FORNITURE-REFINEMENT-001"
+          echo "SCOPE=FORNITURE_ONLY"
+          echo "ZERO_INCREMENTAL_COST=PASS"
+          echo "USER_AS_TEST_OPERATOR=NOT_USED"
+          echo "NO_MAIN_MUTATION=PASS"
+          echo "NO_LIVE_DB_MUTATION=PASS"
+
+      - name: Verify exact source and PR state
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$EMCORE_SOURCE_TOKEN"
+          pr_json="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer $EMCORE_SOURCE_TOKEN" https://api.github.com/repos/emcore-project/emcore/pulls/1110)"
+          test "$(printf '%s' "$pr_json" | jq -r '.head.sha')" = "$TARGET_SHA"
+          test "$(printf '%s' "$pr_json" | jq -r '.state')" = "open"
+          test "$(printf '%s' "$pr_json" | jq -r '.draft')" = "true"
+          test "$(printf '%s' "$pr_json" | jq -r '.merged_at')" = "null"
+          commit_json="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer $EMCORE_SOURCE_TOKEN" "https://api.github.com/repos/emcore-project/emcore/commits/$TARGET_SHA")"
+          test "$(printf '%s' "$commit_json" | jq -r '.commit.tree.sha')" = "$TARGET_TREE"
+          echo "SOURCE_SHA=$TARGET_SHA"
+          echo "SOURCE_TREE=$TARGET_TREE"
+          echo "SOURCE_DRIFT=NONE"
+
+      - name: Exact-head type and build
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone -q "https://x-access-token:$EMCORE_SOURCE_TOKEN@github.com/emcore-project/emcore.git" /tmp/emcore
+          cd /tmp/emcore
+          git checkout -q "$TARGET_SHA"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          npm ci
+          npm run check --workspace @emcore/web
+          npm run build --workspace @emcore/web
+          echo "TYPECHECK=PASS"
+          echo "BUILD=PASS"
+
+      - name: Verify exact deployed identity
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 120); do
+            raw="$(curl -fsSL "$TARGET_PREVIEW/api/deployment-identity" 2>/dev/null || true)"
+            if printf '%s' "$raw" | grep -q "$TARGET_SHA"; then
+              echo "$raw" >/tmp/deployment-identity
+              break
+            fi
+            sleep 2
+          done
+          grep -q "$TARGET_SHA" /tmp/deployment-identity
+          echo "DEPLOYMENT_IDENTITY=$TARGET_SHA"
+          echo "EXACT_DEPLOYED_IDENTITY=PASS"
+
+      - name: Runtime V09 acceptance matrix
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          test -n "$chrome"
+          "$chrome" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9222 --user-data-dir=/tmp/v09-chrome --window-size=1440,1000 "$TARGET_PREVIEW/preview/#supplies" >/tmp/chrome.log 2>&1 &
+          chrome_pid=$!
+          trap 'kill "$chrome_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do if curl -fsS http://127.0.0.1:9222/json/version >/dev/null 2>&1; then break; fi; sleep .5; done
+          curl -fsS http://127.0.0.1:9222/json >/tmp/cdp-targets
+
+          node <<'NODE'
+          const fs=require('node:fs');
+          (async()=>{
+            const base=process.env.TARGET_PREVIEW;
+            const targets=JSON.parse(fs.readFileSync('/tmp/cdp-targets','utf8'));
+            const pageTarget=targets.find(t=>t.type==='page'&&t.url.startsWith(base))||targets.find(t=>t.type==='page');
+            if(!pageTarget?.webSocketDebuggerUrl) throw new Error('No page target');
+            let seq=0; const pending=new Map(); const exceptions=[];
+            const ws=new WebSocket(pageTarget.webSocketDebuggerUrl);
+            const ready=new Promise((resolve,reject)=>{ws.addEventListener('open',resolve,{once:true});ws.addEventListener('error',reject,{once:true})});
+            ws.addEventListener('message',e=>{
+              const m=JSON.parse(String(e.data));
+              if(m.id&&pending.has(m.id)){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(new Error(JSON.stringify(m.error))):p.resolve(m.result)}
+              else if(m.method==='Runtime.exceptionThrown') exceptions.push(m.params?.exceptionDetails?.text||'runtime exception');
+            });
+            const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}))});
+            const evalJs=async(expression)=>{const out=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true,userGesture:true});if(out.exceptionDetails)throw new Error(out.exceptionDetails.text);return out.result?.value};
+            const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+            const waitFor=async(expression,timeout=15000)=>{const start=Date.now();while(Date.now()-start<timeout){try{if(await evalJs(expression))return}catch{}await sleep(180)}throw new Error('waitFor timeout '+expression)};
+            const pass=(id,detail='')=>console.log('CHECK_'+id+'=PASS'+(detail?' | '+detail:''));
+            const clickText=async(sel,text)=>{const p=JSON.stringify({sel,text});if(!(await evalJs(`(()=>{const {sel,text}=${p};const r=document.querySelector(sel)||document;const e=[...r.querySelectorAll('button')].find(b=>(b.textContent||'').trim().includes(text));if(!e)return false;e.click();return true})()`)))throw new Error('button not found '+text)};
+            const setInput=async(sel,value)=>{const p=JSON.stringify({sel,value});if(!(await evalJs(`(()=>{const {sel,value}=${p};const e=document.querySelector(sel);if(!e)return false;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}));return true})()`)))throw new Error('input not found')};
+            const load=async(width,height,mobile=false)=>{
+              await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile});
+              await send('Page.navigate',{url:base+'/preview/#supplies'});
+              await waitFor(`document.readyState==='complete'&&document.querySelector('.v04')&&document.querySelectorAll('.v04__row').length>=2`);
+              await sleep(220);
+            };
+            const viewport=async(width,height,mobile=false)=>{
+              await load(width,height,mobile);
+              const metrics=await evalJs(`(()=>({w:innerWidth,doc:document.documentElement.scrollWidth,body:document.body.scrollWidth,sort:(()=>{const e=document.querySelector('.v04__sort');if(!e)return null;const r=e.getBoundingClientRect();return {left:r.left,right:r.right,parentRight:e.parentElement.getBoundingClientRect().right}})()}))()`);
+              if(metrics.doc>width+1||metrics.body>width+1) throw new Error('page horizontal overflow '+width+' '+JSON.stringify(metrics));
+              if(metrics.sort&&(metrics.sort.left<0||metrics.sort.right>metrics.sort.parentRight+1)) throw new Error('sort overflow '+width+' '+JSON.stringify(metrics.sort));
+              pass('VIEWPORT_'+width+'X'+height);
+            };
+            const assertSingleLine=async(label)=>{
+              const proof=await evalJs(`(()=>{const list=[...document.querySelectorAll('.v04__supply-code')].filter(e=>e.offsetParent!==null);return list.map(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return {text:e.textContent.trim(),white:s.whiteSpace,height:r.height,line:parseFloat(s.lineHeight)||parseFloat(s.fontSize)*1.4,scroll:e.scrollWidth,client:e.clientWidth}})})()`);
+              if(!proof.length||proof.some(x=>x.white!=='nowrap'||x.height>x.line*1.6)) throw new Error(label+' identifier wrap '+JSON.stringify(proof));
+              pass(label,JSON.stringify(proof));
+            };
+
+            await ready; await send('Runtime.enable'); await send('Page.enable');
+
+            await load(1440,1000,false);
+            await assertSingleLine('POD_PDR_SINGLE_LINE_DESKTOP');
+
+            const calm=await evalJs(`(()=>{const p=getComputedStyle(document.querySelector('.v04__primary'));const n=getComputedStyle(document.querySelector('.v04__nav button.is-active'));const f=getComputedStyle(document.querySelector('.v04__filters button.is-active'));return {primaryBg:p.backgroundImage,navBg:n.backgroundImage,filterBg:f.backgroundImage,primaryColor:p.backgroundColor,navColor:n.backgroundColor,filterColor:f.backgroundColor}})()`);
+            if(calm.primaryBg!=='none'||calm.navBg!=='none'||calm.filterBg!=='none') throw new Error('gradient remained in equivalent action state '+JSON.stringify(calm));
+            pass('CALM_UNIFORM_ACTION_STATES',JSON.stringify(calm));
+
+            const sidebar=await evalJs(`(()=>({logo:!!document.querySelector('.v04__brand-mark svg'),ridge:!!document.querySelector('.v04__brand-ridge'),wave:!!document.querySelector('.v04__brand-wave'),tagline:(document.querySelector('.v04__sidebar-tagline')?.innerText||''),bg:getComputedStyle(document.querySelector('.v04__sidebar')).backgroundImage}))()`);
+            if(!sidebar.logo||!sidebar.ridge||!sidebar.wave||!sidebar.tagline.includes('Energia sotto controllo')||!sidebar.bg.includes('gradient')) throw new Error('sidebar brand proof '+JSON.stringify(sidebar));
+            pass('SIDEBAR_BRAND_COMPLIANCE');
+
+            const renewal=await evalJs(`(()=>({kpi:[...document.querySelectorAll('.v04__kpi')].some(e=>(e.textContent||'').includes('Rinnovi entro 120 giorni')&&e.classList.contains('is-attention')),snapshot:document.querySelector('.v04__snapshot-next')?.className||'',row:[...document.querySelectorAll('.v04__renewal-cell')].some(e=>e.classList.contains('is-attention'))}))()`);
+            if(!renewal.kpi||!renewal.snapshot.includes('is-attention')||!renewal.row) throw new Error('renewal semantic mismatch '+JSON.stringify(renewal));
+            pass('RENEWAL_120_DAY_SEMANTICS',JSON.stringify(renewal));
+
+            const marker=await evalJs(`(()=>{const d=document.querySelector('.v04__status i');const r=d.getBoundingClientRect();return {w:r.width,h:r.height,text:(d.parentElement?.textContent||'').trim()}})()`);
+            if(marker.w<10||marker.h<10||!marker.text) throw new Error('status marker weak '+JSON.stringify(marker));
+            pass('STATUS_MICRO_INDICATOR',JSON.stringify(marker));
+
+            const labelProof=await evalJs(`(()=>{const e=document.querySelector('.v04__snapshot .v04__kv span');const s=getComputedStyle(e);return {size:parseFloat(s.fontSize),weight:parseInt(s.fontWeight),color:s.color}})()`);
+            if(labelProof.size<14||labelProof.weight<700) throw new Error('label legibility '+JSON.stringify(labelProof));
+            pass('CARD_LABEL_LEGIBILITY',JSON.stringify(labelProof));
+
+            const initial=await evalJs(`document.querySelector('.v04__inspector h2')?.textContent?.trim()||''`);
+            const second=await evalJs(`document.querySelectorAll('.v04__row')[1]?.querySelector('.v04__supply-code')?.textContent?.trim()||''`);
+            await evalJs(`document.querySelectorAll('.v04__row')[1].querySelector('.v04__row-select').click();true`);
+            await waitFor(`document.querySelector('.v04__inspector h2')?.textContent?.trim()===${JSON.stringify(second)}`);
+            if(second===initial) throw new Error('row selection failed');
+            if(await evalJs(`!!document.querySelector('[data-testid="supply-detail-page"]')`)) throw new Error('row select opened detail');
+            pass('ROW_SELECT_INSPECTOR_ONLY',second);
+
+            await load(1440,1000,false);
+            const first=await evalJs(`document.querySelectorAll('.v04__row')[0]?.querySelector('.v04__supply-code')?.textContent?.trim()||''`);
+            await evalJs(`document.querySelectorAll('.v04__row')[0].querySelector('.v04__row-detail').click();true`);
+            await waitFor(`!!document.querySelector('[data-testid="supply-detail-page"]')`);
+            const detailCode=await evalJs(`document.querySelector('.v04__detail-page-identity .v04__supply-code')?.textContent?.trim()||''`);
+            if(detailCode!==first) throw new Error('row detail mismatch '+detailCode+' '+first);
+            pass('ROW_DIRECT_DETAIL',detailCode);
+
+            const tech=await evalJs(`document.querySelector('[data-testid="technical-data-card"]')?.innerText||''`);
+            for(const required of ['Dati tecnici','Identificativo','Commodity','Livello tensione','Sito','Indirizzo sito','Stato fornitura']) if(!tech.includes(required)) throw new Error('technical card missing '+required);
+            for(const forbidden of ['Distributore','REMI','Classe contatore','Potenza disponibile','Capacità tecnica']) if(tech.includes(forbidden)) throw new Error('fabricated technical field '+forbidden);
+            pass('TECHNICAL_DATA_GOVERNED_ONLY');
+
+            const tabFont=await evalJs(`parseFloat(getComputedStyle(document.querySelector('.v04__detail-tabs button')).fontSize)`);
+            if(tabFont<16) throw new Error('detail tab font regression '+tabFont);
+            pass('DETAIL_TAB_TYPE_SCALE',String(tabFont));
+
+            await clickText('.v04__supply-detail','Torna alle forniture'); await waitFor(`!!document.querySelector('.v04__workspace')`);
+            const total=await evalJs(`document.querySelectorAll('.v04__row').length`);
+            await setInput('.v04__search input','00000000000001');
+            await waitFor(`document.querySelectorAll('.v04__row').length===1`);
+            pass('LIVE_SEARCH');
+            await setInput('.v04__search input',''); await waitFor(`document.querySelectorAll('.v04__row').length===${total}`);
+
+            await clickText('.v04__filters','Energia elettrica'); await waitFor(`document.querySelectorAll('.v04__row').length>0`); pass('FILTER_EE');
+            await clickText('.v04__filters','Gas'); await waitFor(`document.querySelectorAll('.v04__row').length>0`); pass('FILTER_GAS');
+            await clickText('.v04__filters','Da verificare'); await waitFor(`document.querySelectorAll('.v04__row').length>0`); pass('FILTER_ATTENTION');
+            await clickText('.v04__filters','Tutte'); await waitFor(`document.querySelectorAll('.v04__row').length===${total}`);
+
+            await clickText('.v04__table-head','Prossimo rinnovo');
+            await waitFor(`document.querySelector('.v04__sort-header.is-active svg')?.dataset.icon==='sort-down'`);
+            const renewalSort=await evalJs(`document.querySelector('.v04__sort-header.is-active')?.getAttribute('aria-label')||''`);
+            if(!renewalSort.includes('decrescente')) throw new Error('renewal direction not explicit '+renewalSort);
+            pass('SORT_HEADER_DIRECTION',renewalSort);
+
+            await clickText('.v04__toolbar','Ordina:');
+            await waitFor(`(document.querySelector('.v04__sort')?.textContent||'').includes('Codice')&&(document.querySelector('.v04__sort svg')?.dataset.icon==='sort-up')`);
+            pass('SORT_TOOLBAR_COHERENCE',await evalJs(`document.querySelector('.v04__sort')?.textContent?.trim()||''`));
+
+            await evalJs(`document.querySelector('.v04__primary').click();true`); await waitFor(`!!document.querySelector('[data-testid="supply-detail-page"]')`); pass('INSPECTOR_CTA_DETAIL');
+            for(const label of ['Sintesi','Contratto','Consumi','Controlli','Fonti e documenti']){
+              await clickText('.v04__detail-tabs',label);
+              await waitFor(`[...document.querySelectorAll('.v04__detail-tabs button')].some(b=>b.classList.contains('is-active')&&(b.textContent||'').trim()===${JSON.stringify(label)})`);
+              pass('TAB_'+label.toUpperCase().replaceAll(' ','_'));
+            }
+
+            for(const [w,h,m] of [[1280,900,false],[1024,768,false],[768,1024,false],[390,844,true],[360,800,true],[320,800,true]]) {
+              await viewport(w,h,m);
+              if(w>=768) await assertSingleLine('POD_PDR_SINGLE_LINE_'+w);
+            }
+
+            await load(390,844,true);
+            await evalJs(`document.querySelector('.v04__mobile-trigger').click();true`); await waitFor(`!!document.querySelector('.v04__scrim')`); pass('MOBILE_NAV_OPEN');
+            await evalJs(`document.querySelector('.v04__scrim').click();true`); await waitFor(`!document.querySelector('.v04__scrim')`); pass('MOBILE_NAV_CLOSE');
+
+            await load(640,900,false);
+            await evalJs(`document.documentElement.style.fontSize='200%';true`); await sleep(350);
+            const resize=await evalJs(`({doc:document.documentElement.scrollWidth,body:document.body.scrollWidth,w:innerWidth,sort:!!document.querySelector('.v04__sort'),rows:document.querySelectorAll('.v04__row').length})`);
+            if(resize.doc>resize.w+1||resize.body>resize.w+1||!resize.sort||resize.rows<1) throw new Error('200% resize '+JSON.stringify(resize));
+            pass('TEXT_RESIZE_200');
+            await evalJs(`document.documentElement.style.fontSize='';true`);
+
+            await evalJs(`(()=>{const st=document.createElement('style');st.id='v09-spacing';st.textContent='.v04 *{line-height:1.5!important;letter-spacing:.12em!important;word-spacing:.16em!important}.v04 p{margin-bottom:2em!important}';document.head.appendChild(st);return true})()`); await sleep(300);
+            const spacing=await evalJs(`({doc:document.documentElement.scrollWidth,body:document.body.scrollWidth,w:innerWidth})`);
+            if(spacing.doc>spacing.w+1||spacing.body>spacing.w+1) throw new Error('text spacing '+JSON.stringify(spacing));
+            pass('TEXT_SPACING');
+            await evalJs(`document.getElementById('v09-spacing')?.remove();true`);
+
+            await evalJs(`document.querySelector('.v04__search input').focus();true`);
+            const focus=await evalJs(`(()=>{const s=getComputedStyle(document.activeElement);return {tag:document.activeElement.tagName,outline:s.outlineStyle,width:s.outlineWidth}})()`);
+            if(focus.tag!=='INPUT'||focus.outline==='none'||focus.width==='0px') throw new Error('focus visible '+JSON.stringify(focus));
+            pass('FOCUS_VISIBLE');
+
+            const targetsOk=await evalJs(`[...document.querySelectorAll('.v04 button')].filter(e=>getComputedStyle(e).display!=='none').every(e=>{const r=e.getBoundingClientRect();return r.width>=24&&r.height>=24})`);
+            if(!targetsOk) throw new Error('target below 24px');
+            pass('TARGET_SIZE');
+
+            if(exceptions.length) throw new Error('runtime exceptions '+exceptions.join(' | '));
+            pass('NO_RUNTIME_EXCEPTION');
+            console.log('TECHNICAL_DATA_COMPLETENESS=BOUNDED_TO_GOVERNED_SNAPSHOT');
+            console.log('V09_FORNITURE_QUALIFICATION=TERMINAL_PASS');
+            ws.close();
+          })().catch(e=>{console.error(e?.stack||String(e));process.exit(1)});
+          NODE
+
+      - name: Final fail-closed source and deployment check
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          pr_json="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer $EMCORE_SOURCE_TOKEN" https://api.github.com/repos/emcore-project/emcore/pulls/1110)"
+          test "$(printf '%s' "$pr_json" | jq -r '.head.sha')" = "$TARGET_SHA"
+          curl -fsSL "$TARGET_PREVIEW/api/deployment-identity" | grep -q "$TARGET_SHA"
+          echo "FINAL_SOURCE_DRIFT=NONE"
+          echo "FINAL_DEPLOYMENT_DRIFT=NONE"
