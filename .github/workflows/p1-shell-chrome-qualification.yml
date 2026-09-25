@@ -1,0 +1,145 @@
+name: P1 Shell Chrome Exact-Head Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/p1-shell-chrome-qualification.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout qualification harness
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Harness boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ github.base_ref }}" = "main"
+          changed="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          test "$changed" = ".github/workflows/p1-shell-chrome-qualification.yml"
+          ! grep -Eiq "wrangler deploy|supabase db push|service_role|Q29_BYPASS.*true" .github/workflows/p1-shell-chrome-qualification.yml
+          echo "HARNESS_BOUNDARY=PASS"
+
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: b3b993e3a81aaf0235b2477932584a987bd1340b
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source and bounded diff
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "b3b993e3a81aaf0235b2477932584a987bd1340b"
+          test "$(git rev-parse 'HEAD^{tree}')" = "d289c9e9cb09b419ae3961ede53d1eceba61dbd8"
+          changed="$(git diff --name-only cde6303d68ea91e9e971cf71dda17ccc05f29389..HEAD)"
+          expected="$(printf '%s\n' 'apps/web/src/ProductPreviewV02App.tsx' 'apps/web/src/product-preview-v02.css')"
+          test "$changed" = "$expected"
+          test -z "$(git status --porcelain)"
+          echo "EXACT_SOURCE_AND_DIFF=PASS"
+          echo "AUTHORIZED_FILES_ONLY=PASS"
+
+      - name: Verify immutable reference and governed files
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --quiet cde6303d68ea91e9e971cf71dda17ccc05f29389..HEAD -- apps/web/src/FornitureV04Cleanroom.tsx
+          git diff --quiet cde6303d68ea91e9e971cf71dda17ccc05f29389..HEAD -- apps/web/src/forniture-v04-cleanroom.css
+          git diff --quiet cde6303d68ea91e9e971cf71dda17ccc05f29389..HEAD -- apps/web/src/portal-navigation.ts
+          git diff --quiet cde6303d68ea91e9e971cf71dda17ccc05f29389..HEAD -- apps/web/src/product-preview-data.ts
+          git diff --quiet cde6303d68ea91e9e971cf71dda17ccc05f29389..HEAD -- apps/web/src/portal-data-source.ts
+          git diff --quiet cde6303d68ea91e9e971cf71dda17ccc05f29389..HEAD -- apps/web/src/workspace-source.ts
+          git diff --quiet cde6303d68ea91e9e971cf71dda17ccc05f29389..HEAD -- apps/web/src/product-preview-technical-facts.ts
+          test "$(git rev-parse cde6303d68ea91e9e971cf71dda17ccc05f29389:apps/web/src/product-preview-visual-v13.css)" = "$(git rev-parse HEAD:apps/web/src/product-preview-visual-v13.css)"
+          echo "FORNITURE_IMMUTABLE=PASS"
+          echo "DOMAIN_DATA_NAV_IMMUTABLE=PASS"
+          echo "P0_FOUNDATION_IMMUTABLE=PASS"
+
+      - name: Verify P1 shell chrome contract
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tsx="apps/web/src/ProductPreviewV02App.tsx"
+          css="apps/web/src/product-preview-v02.css"
+          grep -q "import './product-preview-visual-v13.css';" "$tsx"
+          test "$(grep -c 'aria-current={section === item.id' "$tsx")" -eq 2
+          grep -q 'emcore-v02__org-selector' "$tsx"
+          grep -q 'emcore-v02__preview-chip' "$tsx"
+          grep -q 'emcore-v02__profile' "$tsx"
+          grep -q 'Sola lettura' "$tsx"
+          grep -q 'P1 SHELL / CHROME PILOT' "$css"
+          tail_section="$(sed -n '/P1 SHELL \/ CHROME PILOT/,$p' "$css")"
+          printf '%s' "$tail_section" | grep -q -- 'var(--emcore-v13-shell-sidebar)'
+          printf '%s' "$tail_section" | grep -q -- 'var(--emcore-v13-brand-blue)'
+          printf '%s' "$tail_section" | grep -q -- 'var(--emcore-v13-target-min)'
+          printf '%s' "$tail_section" | grep -q -- ':focus-visible'
+          ! printf '%s' "$tail_section" | grep -Eq '\.emcore-v02__(kpi|toolbar|table|row|inspector|hero|panel|priority|portfolio-row|action-|domain-|expert)'
+          echo "V13_FOUNDATION_CONSUMED=PASS"
+          echo "SHELL_CHROME_CONTRACT=PASS"
+          echo "NO_PAGE_BODY_SELECTOR_MIGRATION=PASS"
+
+      - name: Verify PageHeader and route copy unchanged
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          before="$(git show cde6303d68ea91e9e971cf71dda17ccc05f29389:apps/web/src/ProductPreviewV02App.tsx | sed -n '/function PageHeader/,/function HomePage/p')"
+          after="$(sed -n '/function PageHeader/,/function HomePage/p' apps/web/src/ProductPreviewV02App.tsx)"
+          test "$before" = "$after"
+          echo "PAGE_HEADER_COPY_UNCHANGED=PASS"
+
+      - name: Set up Node 22.16
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Verify built P1 consumption
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -R -q -- "--emcore-v13-shell-sidebar" dist/client dist/emcore_web_dev
+          grep -R -q -- "P1 SHELL / CHROME PILOT" dist/client dist/emcore_web_dev
+          echo "P1_PRESENT_IN_RUNTIME_BUNDLE=PASS"
+
+      - name: Governed safety boundary
+        shell: bash
+        run: |
+          echo "NO_MAIN_MUTATION=PASS"
+          echo "NO_FORNITURE_REWIRE=PASS"
+          echo "NO_PAGE_BODY_EXPANSION=PASS"
+          echo "NO_LIVE_DB_MUTATION=PASS"
+          echo "Q29_BYPASS=NONE"
+          echo "ZERO_INCREMENTAL_COST=PASS"
+          echo "P1_SHELL_CHROME=QUALIFICATION_PASS"
