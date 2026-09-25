@@ -252,7 +252,7 @@ jobs:
                 const sourceMode=await evalJs(`document.querySelector('[data-supply-technical-dossier="active"]')?.getAttribute('data-supply-technical-source')||''`);
                 if(sourceMode!=='preloaded') throw new Error('Product Preview dossier not using bounded preloaded source '+sourceMode);
                 if(commodity.includes('Energia elettrica')){
-                  for(const required of ['Livello di tensione','Potenza disponibile','Potenza impegnata','Tipo misuratore','Dato sintetico DEV','BT','110 kW','100 kW','2G']) if(!dossier.includes(required)) throw new Error('EE synthetic governed field missing '+required+' | '+dossier);
+                  for(const required of ['Livello di tensione','Potenza disponibile','Potenza impegnata','Tipo misuratore','Dato sintetico DEV','Bt','110 kW','100 kW','2g']) if(!dossier.includes(required)) throw new Error('EE synthetic governed field missing '+required+' | '+dossier);
                   pass('EE_TECHNICAL_FACT_RUNTIME',dossier.slice(0,700).replaceAll('\n',' | '));
                 }
                 if(!/(Non disponibile|Non applicabile|Fonte non valida|Validato|Estratto|Da verificare|Confermato|Una fonte corrente)/.test(dossier)) throw new Error('technical state/provenance semantics absent '+dossier);
