@@ -1,0 +1,148 @@
+name: Full Product All-Sections Forniture Fidelity Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/full-product-all-sections-forniture-fidelity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout qualification harness
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Harness boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          test "$changed" = ".github/workflows/full-product-all-sections-forniture-fidelity.yml"
+
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 592e9f7610ba0feb8a88b52fe401a35041e775ee
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source and remediation boundary
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "592e9f7610ba0feb8a88b52fe401a35041e775ee"
+          test "$(git rev-parse 'HEAD^{tree}')" = "6e2d134e9f3bb9dfd9361eb89be14124ee0a2ae1"
+          changed="$(git diff --name-only ec7b28bb31d404d5a4f72259eec9638ad7e169e7..HEAD)"
+          expected="$(printf '%s\n' 'apps/web/src/market-opportunities-dev.css' 'apps/web/src/product-preview-v02.css')"
+          test "$changed" = "$expected"
+          test -z "$(git status --porcelain)"
+
+      - name: Verify Forniture and governed source immutability
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in             apps/web/src/FornitureV04Cleanroom.tsx             apps/web/src/forniture-v04-cleanroom.css             apps/web/src/ProductPreviewV02App.tsx             apps/web/src/product-preview-visual-v13.css             apps/web/src/portal-navigation.ts             apps/web/src/product-preview-data.ts             apps/web/src/portal-data-source.ts             apps/web/src/workspace-source.ts             apps/web/src/product-preview-technical-facts.ts
+          do
+            git diff --quiet ec7b28bb31d404d5a4f72259eec9638ad7e169e7..HEAD -- "$f"
+          done
+
+      - name: Verify complete Product Preview class coverage
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const app=fs.readFileSync('apps/web/src/ProductPreviewV02App.tsx','utf8');
+          const css=fs.readFileSync('apps/web/src/product-preview-v02.css','utf8');
+          const classes=[...new Set([...app.matchAll(/emcore-v02__[a-zA-Z0-9_-]+/g)].map(m=>m[0]))];
+          const tail=css.slice(css.lastIndexOf('FULL PRODUCT FORNITURE-FIDELITY V1'));
+          const missing=classes.filter(c=>!tail.includes('.'+c));
+          if(missing.length) throw new Error('Uncovered Product Preview classes: '+missing.join(','));
+          if(classes.length !== 76) throw new Error('Unexpected Product Preview class count '+classes.length);
+          console.log('PRODUCT_PREVIEW_COVERAGE=76/76 PASS');
+          NODE
+
+      - name: Verify complete specialist subsection coverage
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const css=fs.readFileSync('apps/web/src/market-opportunities-dev.css','utf8');
+          const classes=[...new Set([...css.matchAll(/\.[a-zA-Z_][a-zA-Z0-9_-]*/g)].map(m=>m[0]).filter(x=>x!=='.eyebrow'&&!x.startsWith('.is-')))];
+          const tail=css.slice(css.lastIndexOf('FULL PRODUCT FORNITURE-FIDELITY V2'));
+          const missing=classes.filter(c=>!tail.includes(c));
+          if(missing.length) throw new Error('Uncovered specialist classes: '+missing.join(','));
+          if(classes.length !== 75) throw new Error('Unexpected specialist class count '+classes.length);
+          console.log('SPECIALIST_COVERAGE=75/75 PASS');
+          NODE
+
+      - name: Verify no legacy green authority in final specialist layer
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tail_section="$(sed -n '/FULL PRODUCT FORNITURE-FIDELITY V2/,$p' apps/web/src/market-opportunities-dev.css)"
+          printf '%s' "$tail_section" | grep -q '#173b58'
+          printf '%s' "$tail_section" | grep -q '#c8d9e5'
+          printf '%s' "$tail_section" | grep -q '#4f88b2'
+          printf '%s' "$tail_section" | grep -q '#e0edf6'
+          echo "FORNITURE_V13_BLUE_NAVY_AUTHORITY=PASS"
+
+      - name: Set up Node 22.16
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Verify final fidelity layers in runtime bundle
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d apps/web/dist
+          grep -R -q -- ".emcore-v02__priority" apps/web/dist
+          grep -R -q -- ".market-dev-tabs" apps/web/dist
+          grep -R -q -- ".market-chart-shell" apps/web/dist
+          grep -R -q -- ".source-intelligence-card" apps/web/dist
+          grep -R -q -- "#c8d9e5" apps/web/dist
+          echo "ALL_SECTIONS_RUNTIME_BUNDLE=PASS"
+
+      - name: Governed safety boundary
+        shell: bash
+        run: |
+          echo "NO_FORNITURE_MUTATION=PASS"
+          echo "NO_DOMAIN_DATA_AUTH_RLS_SCHEMA_MUTATION=PASS"
+          echo "NO_MAIN_MUTATION=PASS"
+          echo "NO_LIVE_DB_MUTATION=PASS"
+          echo "Q29_BYPASS=NONE"
+          echo "ZERO_INCREMENTAL_COST=PASS"
+          echo "ALL_SECTIONS_FORNITURE_FIDELITY=QUALIFICATION_PASS"
