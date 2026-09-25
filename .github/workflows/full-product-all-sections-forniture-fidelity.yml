@@ -100,7 +100,7 @@ jobs:
           tail_section="$(sed -n '/FULL PRODUCT FORNITURE-FIDELITY V2/,$p' apps/web/src/market-opportunities-dev.css)"
           printf '%s' "$tail_section" | grep -q '#173b58'
           printf '%s' "$tail_section" | grep -q '#c8d9e5'
-          printf '%s' "$tail_section" | grep -q '#4f88b2'
+          printf '%s' "$tail_section" | grep -q '#edf5fa'
           printf '%s' "$tail_section" | grep -q '#e0edf6'
           echo "FORNITURE_V13_BLUE_NAVY_AUTHORITY=PASS"
 
