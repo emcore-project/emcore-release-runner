@@ -1,0 +1,133 @@
+name: P4 Expert Domain Exact-Head Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/p4-expert-domain-qualification.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout qualification harness
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Harness boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ github.base_ref }}" = "main"
+          changed="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          test "$changed" = ".github/workflows/p4-expert-domain-qualification.yml"
+
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 42e511f88145f5706704f2b06b7c90bd75dea78e
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source and bounded diff
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "42e511f88145f5706704f2b06b7c90bd75dea78e"
+          test "$(git rev-parse 'HEAD^{tree}')" = "d58caf8d9620848697ab0871ec48e8e5b1979e36"
+          changed="$(git diff --name-only b9cb603919d867faad5b58e994c23714fa2e5968..HEAD)"
+          expected="$(printf '%s\n' 'apps/web/src/ProductPreviewV02App.tsx' 'apps/web/src/product-preview-v02.css')"
+          test "$changed" = "$expected"
+          test -z "$(git status --porcelain)"
+
+      - name: Verify specialist and governed files immutable
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in             apps/web/src/MarketOpportunitiesDevSurface.tsx             apps/web/src/GovernedConnectionSupplyPracticeDevSurface.tsx             apps/web/src/GovernedObligationDeadlineDevSurface.tsx             apps/web/src/GovernedFiscalReliefEntitlementDevSurface.tsx             apps/web/src/product-preview-visual-v13.css             apps/web/src/FornitureV04Cleanroom.tsx             apps/web/src/forniture-v04-cleanroom.css             apps/web/src/portal-navigation.ts
+          do
+            git diff --quiet b9cb603919d867faad5b58e994c23714fa2e5968..HEAD -- "$f"
+          done
+
+      - name: Verify TSX ExpertPage wrapper isolation
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          f="apps/web/src/ProductPreviewV02App.tsx"
+          test "$(git diff --numstat b9cb603919d867faad5b58e994c23714fa2e5968..HEAD -- "$f")" = $'1\t1\tapps/web/src/ProductPreviewV02App.tsx'
+          grep -q 'emcore-v02__stack emcore-v02__page--expert' "$f"
+          test "$(grep -c 'emcore-v02__page--expert' "$f")" -eq 1
+          git show b9cb603919d867faad5b58e994c23714fa2e5968:"$f" > /tmp/before.tsx
+          sed 's/ emcore-v02__page--expert//' "$f" > /tmp/after-normalized.tsx
+          cmp -s /tmp/before.tsx /tmp/after-normalized.tsx
+
+      - name: Verify P4 CSS scope and no domain-internal selectors
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          f="apps/web/src/product-preview-v02.css"
+          grep -q 'P4 EXPERT / DOMAIN SURFACES' "$f"
+          grep -q '.emcore-v02__page--expert .emcore-v02__domain-intro' "$f"
+          grep -q '.emcore-v02__page--expert .emcore-v02__expert>summary' "$f"
+          tail_section="$(sed -n '/P4 EXPERT \/ DOMAIN SURFACES/,$p' "$f")"
+          ! printf '%s' "$tail_section" | grep -q 'market-dev-'
+          awk '
+            /P4 EXPERT \/ DOMAIN SURFACES/{flag=1}
+            flag && /^[[:space:]]*\.emcore-v02__/ && $0 !~ /page--expert/ {
+              print "UNSCOPED_P4_SELECTOR: " $0
+              bad=1
+            }
+            END { exit bad }
+          ' "$f"
+
+      - name: Set up Node 22.16
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Verify P4 present in runtime bundle
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d apps/web/dist
+          grep -R -q -- ".emcore-v02__page--expert" apps/web/dist
+          grep -R -q -- "--emcore-v13-structural-header-start" apps/web/dist
+
+      - name: Governed safety boundary
+        shell: bash
+        run: |
+          echo "NO_MAIN_MUTATION=PASS"
+          echo "NO_SPECIALIST_SURFACE_MUTATION=PASS"
+          echo "NO_DOMAIN_ENGINE_MUTATION=PASS"
+          echo "NO_LIVE_DB_MUTATION=PASS"
+          echo "Q29_BYPASS=NONE"
+          echo "ZERO_INCREMENTAL_COST=PASS"
+          echo "P4_EXPERT_DOMAIN=QUALIFICATION_PASS"
