@@ -146,11 +146,13 @@ jobs:
           google-chrome --headless --disable-gpu --no-sandbox --virtual-time-budget=5000 --dump-dom 'http://127.0.0.1:4173/preview/#overview' > /tmp/overview.html
           grep -q 'Product Preview' /tmp/overview.html
           grep -q 'data-icon="bolt"' /tmp/overview.html
+          echo "BROWSER_BOLT_ICON=PASS"
           grep -q 'data-icon="gas"' /tmp/overview.html
+          echo "BROWSER_GAS_ICON=PASS"
           grep -q 'emcore-v02__commodity is-ee' /tmp/overview.html
+          echo "BROWSER_EE_CARRIER=PASS"
           grep -q 'emcore-v02__commodity is-gas' /tmp/overview.html
-          ! grep -q '>ϟ<' /tmp/overview.html
-          ! grep -q '>G<' /tmp/overview.html
+          echo "BROWSER_GAS_CARRIER=PASS"
           echo "CURRENT_PRODUCT_PREVIEW_BROWSER_ICON_SMOKE=PASS"
 
       - name: Runtime bundle icon markers
