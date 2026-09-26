@@ -144,15 +144,11 @@ jobs:
           done
           curl -fsS http://127.0.0.1:4173/preview/ >/dev/null
           google-chrome --headless --disable-gpu --no-sandbox --virtual-time-budget=5000 --dump-dom 'http://127.0.0.1:4173/preview/#overview' > /tmp/overview.html
-          grep -q 'Product Preview' /tmp/overview.html
-          grep -q 'data-icon="bolt"' /tmp/overview.html
-          echo "BROWSER_BOLT_ICON=PASS"
-          grep -q 'data-icon="gas"' /tmp/overview.html
-          echo "BROWSER_GAS_ICON=PASS"
-          grep -q 'emcore-v02__commodity is-ee' /tmp/overview.html
-          echo "BROWSER_EE_CARRIER=PASS"
-          grep -q 'emcore-v02__commodity is-gas' /tmp/overview.html
-          echo "BROWSER_GAS_CARRIER=PASS"
+          if grep -q 'Product Preview' /tmp/overview.html; then echo "BROWSER_PRODUCT_PREVIEW=PASS"; else echo "BROWSER_PRODUCT_PREVIEW=MISSING"; exit 1; fi
+          if grep -q 'data-icon="bolt"' /tmp/overview.html; then echo "BROWSER_BOLT_ICON=PASS"; else echo "BROWSER_BOLT_ICON=MISSING"; exit 1; fi
+          if grep -q 'data-icon="gas"' /tmp/overview.html; then echo "BROWSER_GAS_ICON=PASS"; else echo "BROWSER_GAS_ICON=MISSING"; exit 1; fi
+          if grep -q 'emcore-v02__commodity is-ee' /tmp/overview.html; then echo "BROWSER_EE_CARRIER=PASS"; else echo "BROWSER_EE_CARRIER=MISSING"; exit 1; fi
+          if grep -q 'emcore-v02__commodity is-gas' /tmp/overview.html; then echo "BROWSER_GAS_CARRIER=PASS"; else echo "BROWSER_GAS_CARRIER=MISSING"; exit 1; fi
           echo "CURRENT_PRODUCT_PREVIEW_BROWSER_ICON_SMOKE=PASS"
 
       - name: Runtime bundle icon markers
