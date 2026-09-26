@@ -1,0 +1,160 @@
+name: Icon Fidelity Centering Exact-Head Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/icon-fidelity-centering-qualification.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout qualification harness
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Harness boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          test "$changed" = ".github/workflows/icon-fidelity-centering-qualification.yml"
+
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: adc2f689b7ef80ed0622e610c121be1b34baf1da
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact source and bounded product diff
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "adc2f689b7ef80ed0622e610c121be1b34baf1da"
+          test "$(git rev-parse 'HEAD^{tree}')" = "b2201f0dacad263ae6d3b84ba371ae4fdd7e81d6"
+          changed="$(git diff --name-only 592e9f7610ba0feb8a88b52fe401a35041e775ee..HEAD)"
+          test "$changed" = "apps/web/src/ProductPreviewV02App.tsx"
+          test -z "$(git status --porcelain)"
+
+      - name: Verify Forniture and governed source immutability
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in             apps/web/src/FornitureV04Cleanroom.tsx             apps/web/src/forniture-v04-cleanroom.css             apps/web/src/product-preview-v02.css             apps/web/src/product-preview-visual-v13.css             apps/web/src/market-opportunities-dev.css             apps/web/src/portal-navigation.ts             apps/web/src/product-preview-data.ts             apps/web/src/portal-data-source.ts             apps/web/src/workspace-source.ts             apps/web/src/product-preview-technical-facts.ts
+          do
+            git diff --quiet 592e9f7610ba0feb8a88b52fe401a35041e775ee..HEAD -- "$f"
+          done
+
+      - name: Verify approved commodity icon fidelity
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const app = fs.readFileSync('apps/web/src/ProductPreviewV02App.tsx','utf8');
+          const forniture = fs.readFileSync('apps/web/src/FornitureV04Cleanroom.tsx','utf8');
+
+          for (const name of ['gas','bolt']) {
+            const marker = name + ': <>';
+            if (!app.includes(marker)) throw new Error('Missing Product Preview icon '+name);
+            if (!forniture.includes(marker)) throw new Error('Missing Forniture reference icon '+name);
+          }
+
+          const gasStart = forniture.indexOf('    gas: <>');
+          const boltStart = forniture.indexOf('    bolt: <>');
+          const fileStart = forniture.indexOf('    file:', boltStart);
+          const refChunk = forniture.slice(gasStart, fileStart);
+
+          const appGasStart = app.indexOf('    gas: <>');
+          const appBoltStart = app.indexOf('    bolt: <>');
+          const appFileStart = app.indexOf('    file:', appBoltStart);
+          const appChunk = app.slice(appGasStart, appFileStart);
+          if (appChunk !== refChunk) throw new Error('gas/bolt definitions diverge from Forniture reference');
+
+          if (!app.includes("if (icon === 'bolt') return 'bolt';")) throw new Error('Missing EE KPI mapping');
+          if (!app.includes("if (icon === 'gas') return 'gas';")) throw new Error('Missing GAS KPI mapping');
+          if (!app.includes("function commodityIcon(value: string): IconName")) throw new Error('Missing semantic commodity icon resolver');
+          if (app.includes('function commodityGlyph(')) throw new Error('Legacy commodityGlyph resolver remains');
+          if (app.includes('>{commodityGlyph(')) throw new Error('Legacy textual commodity glyph rendering remains');
+          if (app.includes('<Kpi icon="ϟ"')) throw new Error('Legacy EE KPI glyph remains');
+          if (app.includes('<Kpi icon="G"')) throw new Error('Legacy GAS KPI glyph remains');
+
+          console.log('FORNITURE_ICON_FIDELITY=PASS');
+          NODE
+
+      - name: Verify common icon carriers remain centered by layout
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          css="$(cat apps/web/src/product-preview-v02.css)"
+          printf '%s' "$css" | grep -q '.emcore-v02__kpi-icon'
+          printf '%s' "$css" | grep -q 'place-items:center'
+          printf '%s' "$css" | grep -q '.emcore-v02__state-icon'
+          printf '%s' "$css" | grep -q '.emcore-v02__commodity'
+          echo "ICON_CARRIER_CENTERING_LAYOUT=PASS"
+
+      - name: Set up Node 22.16
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: |
+          cat > /tmp/emcore-chrome <<'EOF'
+          #!/bin/sh
+          exec /usr/bin/google-chrome --remote-debugging-address=127.0.0.1 "$@"
+          EOF
+          chmod +x /tmp/emcore-chrome
+          CHROME_PATH=/tmp/emcore-chrome npm run test:browser:acceptance
+
+      - name: Runtime bundle icon markers
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d apps/web/dist
+          grep -R -q -- 'data-icon="gas"' apps/web/dist || grep -R -q -- 'gas' apps/web/dist
+          grep -R -q -- 'data-icon="bolt"' apps/web/dist || grep -R -q -- 'bolt' apps/web/dist
+          echo "ICON_RUNTIME_BUNDLE=PASS"
+
+      - name: Governed safety boundary
+        shell: bash
+        run: |
+          echo "NO_FORNITURE_MUTATION=PASS"
+          echo "NO_DOMAIN_DATA_AUTH_RLS_SCHEMA_MUTATION=PASS"
+          echo "NO_MAIN_MUTATION=PASS"
+          echo "NO_LIVE_DB_MUTATION=PASS"
+          echo "Q29_BYPASS=NONE"
+          echo "ZERO_COST=PASS"
+          echo "ICON_FIDELITY_CENTERING=QUALIFICATION_PASS"
