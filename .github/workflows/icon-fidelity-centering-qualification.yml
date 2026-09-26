@@ -131,7 +131,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm run preview --workspace @emcore/web -- --host 127.0.0.1 --port 4173 > /tmp/emcore-preview.log 2>&1 &
+          mkdir -p apps/web/dist/preview
+          cp apps/web/dist/index.html apps/web/dist/preview/index.html
+          python3 -m http.server 4173 --bind 127.0.0.1 --directory apps/web/dist > /tmp/emcore-preview.log 2>&1 &
           preview_pid=$!
           trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do
