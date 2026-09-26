@@ -101,11 +101,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          css="$(cat apps/web/src/product-preview-v02.css)"
-          printf '%s' "$css" | grep -q '.emcore-v02__kpi-icon'
-          printf '%s' "$css" | grep -q 'place-items:center'
-          printf '%s' "$css" | grep -q '.emcore-v02__state-icon'
-          printf '%s' "$css" | grep -q '.emcore-v02__commodity'
+          grep -q '.emcore-v02__kpi-icon' apps/web/src/product-preview-v02.css
+          grep -q 'place-items:center' apps/web/src/product-preview-v02.css
+          grep -q '.emcore-v02__state-icon' apps/web/src/product-preview-v02.css
+          grep -q '.emcore-v02__commodity' apps/web/src/product-preview-v02.css
           echo "ICON_CARRIER_CENTERING_LAYOUT=PASS"
 
       - name: Set up Node 22.16
