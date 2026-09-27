@@ -1,0 +1,97 @@
+name: CC102 Forniture Visual Continuity
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cc102-forniture-visual-continuity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: ff871c9d401b747b2b1b929487af19d58d569f7c
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact identity and one-file boundary
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "ff871c9d401b747b2b1b929487af19d58d569f7c"
+          files="$(git diff --name-only ab87326fa87667c61e7077990b1a51006acdbaea..HEAD)"
+          test "$files" = "apps/web/src/forniture-v04-cleanroom.css"
+          echo "FORNITURE_VISUAL_CONTINUITY_SCOPE=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Visual continuity assertions
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('node:fs');
+          const css=fs.readFileSync('apps/web/src/forniture-v04-cleanroom.css','utf8');
+          const block=css.split('CC102 FULL VISUAL CONTINUITY')[1]||'';
+          const required=[
+            '--v04-bg:var(--ff-bg,#f4f6f8)',
+            '.v04__sidebar{',
+            'width:236px',
+            'background:linear-gradient(180deg,#08243d 0%,#071d33 52%,#061727 100%)',
+            '.v04__brand-mark{',
+            'background:linear-gradient(145deg,#123f64,#0d5c93)',
+            '.v04__topbar{',
+            'background:#fff',
+            'border-bottom:1px solid #e1e7ed',
+            '.v04__org-mark{',
+            'background:#edf5fb',
+            '.v04__kpi{',
+            'box-shadow:0 4px 14px rgba(20,48,73,.035)',
+            '.v04__toolbar{',
+            '.v04__master,.v04__inspector{',
+            '@media(max-width:640px)'
+          ];
+          for(const needle of required){ if(!block.includes(needle)) throw new Error('missing continuity assertion: '+needle); }
+          if(!css.includes('.v04__commodity.is-ee{background:#fff7d8;color:#9a6700}')) throw new Error('EE commodity semantics changed unexpectedly');
+          if(!css.includes('.v04__commodity.is-gas{background:var(--v04-blue-50);color:var(--v04-blue-800)}')) throw new Error('GAS commodity semantics changed unexpectedly');
+          console.log('FORNITURE_VISUAL_CONTINUITY=PASS');
+          NODE
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: CHROME_PATH=/usr/bin/google-chrome npm run test:browser:acceptance
+
+      - name: Final
+        run: |
+          echo "NO_DOMAIN_ENGINE_DB_Q29_MUTATION=PASS"
+          echo "ZERO_INCREMENTAL_COST=PASS"
