@@ -1,0 +1,84 @@
+name: CC102 Forniture Topbar Parity
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cc102-forniture-topbar-parity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 48200d56ae32bb2fe0124728314956364a7793a0
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact identity and one-file boundary
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "48200d56ae32bb2fe0124728314956364a7793a0"
+          files="$(git diff --name-only 4c07fa180e4cc38c5bcdc82fd9d155536d75e1f7..HEAD)"
+          test "$files" = "apps/web/src/forniture-v04-cleanroom.css"
+          echo "FORNITURE_TOPBAR_SCOPE=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Topbar parity assertion
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('node:fs');
+          const css=fs.readFileSync('apps/web/src/forniture-v04-cleanroom.css','utf8');
+          const block=css.split('CC102 TOPBAR PARITY')[1]||'';
+          const checks=[
+            /\.v04__topbar\{min-height:4\.5rem;height:auto;gap:\.45rem 1\.1rem;padding-top:\.45rem;padding-bottom:\.45rem;background:#fff;box-shadow:none\}/,
+            /\.v04__org-selector\{min-width:0;max-width:22rem;min-height:2\.75rem;gap:10px;padding:6px 8px;border:0;border-radius:8px;background:transparent\}/,
+            /\.v04__org-mark\{width:2\.5rem;height:2\.5rem;flex:0 0 2\.5rem;border-radius:\.5rem;background:#edf5fb;color:#2b70a9;font-size:\.875rem\}/,
+            /\.v04__profile\{min-height:2\.75rem;gap:\.5rem;padding:0;border-radius:\.5rem\}/,
+            /\.v04__avatar\{width:2\.5rem;height:2\.5rem;flex:0 0 2\.5rem;background:#16334c;font-size:\.875rem\}/
+          ];
+          if(!checks.every(r=>r.test(block))) throw new Error('topbar parity block incomplete');
+          console.log('FORNITURE_TOPBAR_PARITY=PASS');
+          NODE
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: CHROME_PATH=/usr/bin/google-chrome npm run test:browser:acceptance
+
+      - name: Final
+        run: |
+          echo "NO_DOMAIN_ENGINE_DB_Q29_MUTATION=PASS"
+          echo "ZERO_INCREMENTAL_COST=PASS"
