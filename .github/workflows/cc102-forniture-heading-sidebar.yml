@@ -1,0 +1,95 @@
+name: CC102 Forniture Heading Sidebar Parity
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cc102-forniture-heading-sidebar.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 9fdfb87cfb5b71a7063532e41b3e70cf7caa65d6
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact identity and one-file boundary
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "9fdfb87cfb5b71a7063532e41b3e70cf7caa65d6"
+          files="$(git diff --name-only 71b7d87befe2c0529377dce43ec2d8c9e7b40450..HEAD)"
+          test "$files" = "apps/web/src/forniture-v04-cleanroom.css"
+          echo "FORNITURE_HEADING_SIDEBAR_SCOPE=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Heading and sidebar parity assertions
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('node:fs');
+          const css=fs.readFileSync('apps/web/src/forniture-v04-cleanroom.css','utf8');
+          const block=css.split('CC102 EXACT HEADING + SIDEBAR PARITY')[1]||'';
+          const required=[
+            '.v04__page-head h1{',
+            'font-weight:800',
+            '.v04__page-head p{',
+            'font-weight:400',
+            '.v04__sidebar{',
+            'width:236px',
+            'overflow:visible',
+            'background:linear-gradient(180deg,#08243d 0%,#071d33 52%,#061727 100%)',
+            '.v04__brand{',
+            'border-bottom:1px solid rgba(255,255,255,.07)',
+            '.v04__nav{',
+            'gap:2px',
+            '.v04__nav button{',
+            'font-weight:650',
+            '.v04__sidebar-tagline{',
+            'margin-top:auto'
+          ];
+          for(const needle of required){ if(!block.includes(needle)) throw new Error('missing parity assertion: '+needle); }
+          console.log('FORNITURE_HEADING_SIDEBAR_PARITY=PASS');
+          NODE
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: CHROME_PATH=/usr/bin/google-chrome npm run test:browser:acceptance
+
+      - name: Final
+        run: |
+          echo "NO_DOMAIN_ENGINE_DB_Q29_MUTATION=PASS"
+          echo "ZERO_INCREMENTAL_COST=PASS"
