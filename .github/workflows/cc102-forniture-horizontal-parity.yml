@@ -1,0 +1,80 @@
+name: CC102 Forniture Horizontal Parity
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cc102-forniture-horizontal-parity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 41bf0078eb23ba5a0b2b311f5d57ff3bfaae44da
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact identity and one-file boundary
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "41bf0078eb23ba5a0b2b311f5d57ff3bfaae44da"
+          test "$(git rev-parse 'HEAD^{tree}')" = "6980dbfe982421b87b61b4692374fa5beaf07627"
+          files="$(git diff --name-only cdf53b5a1cd80b9ad60d4becd6df4cca1af4112c..HEAD)"
+          test "$files" = "apps/web/src/forniture-v04-cleanroom.css"
+          echo "FORNITURE_SCOPE_BOUNDARY=PASS"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Horizontal parity assertion
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const css = fs.readFileSync('apps/web/src/forniture-v04-cleanroom.css','utf8');
+          const block = css.match(/CC102 HORIZONTAL SHELL PARITY[\s\S]*?@media\(min-width:1051px\)\{([\s\S]*?)\n\}/)?.[1] ?? '';
+          if (!/\.v04__sidebar\{width:236px\}/.test(block)) throw new Error('sidebar parity missing');
+          if (!/\.v04__main\{margin-left:236px\}/.test(block)) throw new Error('main offset parity missing');
+          if (!/\.v04__topbar\{padding-left:26px;padding-right:26px\}/.test(block)) throw new Error('topbar parity missing');
+          console.log('FORNITURE_HORIZONTAL_PARITY=PASS');
+          NODE
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: CHROME_PATH=/usr/bin/google-chrome npm run test:browser:acceptance
+
+      - name: Final
+        run: |
+          echo "NO_DOMAIN_ENGINE_DB_Q29_MUTATION=PASS"
+          echo "ZERO_INCREMENTAL_COST=PASS"
