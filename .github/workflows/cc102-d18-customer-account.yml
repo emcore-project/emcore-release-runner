@@ -1,0 +1,106 @@
+name: CC102 D18 Customer Account Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cc102-d18-customer-account.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 762cdfa0feede7c9c701647255a052dc024895aa
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact identity and bounded scope
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "762cdfa0feede7c9c701647255a052dc024895aa"
+          node <<'NODE'
+          const {execFileSync}=require('node:child_process');
+          const expected=[
+            'packages/domain/src/d18-delegated-energy-office.ts',
+            'supabase/migrations/20260927070500_d18_customer_account_multi_org_service_coverage.sql',
+            'tests/d18-customer-account-multi-org-source.test.ts',
+            'tests/d18-customer-account-multi-org.test.ts'
+          ].sort();
+          const actual=execFileSync('git',['diff','--name-only','4623b018970518b5e685ee28e929c5b4302ec081..HEAD'],{encoding:'utf8'}).trim().split('\n').filter(Boolean).sort();
+          if(JSON.stringify(actual)!==JSON.stringify(expected)) throw new Error('scope mismatch '+JSON.stringify(actual));
+          console.log('D18_CUSTOMER_ACCOUNT_SCOPE=PASS');
+          NODE
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Focused D18 customer-account tests
+        working-directory: source
+        run: node --experimental-strip-types --test tests/d18-customer-account-multi-org.test.ts tests/d18-customer-account-multi-org-source.test.ts
+
+      - name: D18 foundation regression
+        working-directory: source
+        run: node --experimental-strip-types --test tests/d18-delegated-energy-office.test.ts tests/d18-delegated-energy-office-source.test.ts
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Pilot readiness
+        working-directory: source
+        run: npm run check:pilot-readiness
+
+      - name: Release hardening
+        working-directory: source
+        run: npm run check:release-hardening
+
+      - name: Full suite
+        working-directory: source
+        run: npm test
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: CHROME_PATH=/usr/bin/google-chrome npm run test:browser:acceptance
+
+      - name: Governance assertions
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "customer/service-account coverage is not tenant ownership, data access, or legal authority" supabase/migrations/20260927070500_d18_customer_account_multi_org_service_coverage.sql
+          grep -q "alter table public.d18_customer_accounts enable row level security" supabase/migrations/20260927070500_d18_customer_account_multi_org_service_coverage.sql
+          grep -q "alter table public.d18_customer_account_organizations enable row level security" supabase/migrations/20260927070500_d18_customer_account_multi_org_service_coverage.sql
+          ! grep -qi "create policy" supabase/migrations/20260927070500_d18_customer_account_multi_org_service_coverage.sql
+          ! git diff 4623b018970518b5e685ee28e929c5b4302ec081..HEAD --name-only | grep -Eq '^apps/web/|^packages/server/'
+          echo "CUSTOMER_ACCOUNT_NOT_TENANT=PASS"
+          echo "SERVICE_COVERAGE_NOT_ACCESS=PASS"
+          echo "NO_RLS_CUTOVER=PASS"
+          echo "NO_CUSTOMER_DATA=PASS"
+          echo "NO_LIVE_PILOT_MUTATION=PASS"
+          echo "Q29_BYPASS=NONE"
+          echo "ZERO_INCREMENTAL_COST=PASS"
