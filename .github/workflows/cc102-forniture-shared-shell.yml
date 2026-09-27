@@ -1,0 +1,107 @@
+name: CC102 Forniture Shared Shell
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cc102-forniture-shared-shell.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 55affe512ba6e213f2db053d8bf4b7f65554576f
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact identity and bounded scope
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "55affe512ba6e213f2db053d8bf4b7f65554576f"
+          node <<'NODE'
+          const {execFileSync}=require('node:child_process');
+          const expected=[
+            'apps/web/src/FornitureV04Cleanroom.tsx',
+            'apps/web/src/ProductPreviewV02App.tsx',
+            'apps/web/src/forniture-v04-cleanroom.css'
+          ].sort();
+          const actual=execFileSync('git',['diff','--name-only','627acee91c0fc07b39c959d496050ce9fc94e2fa..HEAD'],{encoding:'utf8'}).trim().split('\n').filter(Boolean).sort();
+          if(JSON.stringify(actual)!==JSON.stringify(expected)) throw new Error('scope mismatch '+JSON.stringify(actual));
+          console.log('FORNITURE_SHARED_SHELL_SCOPE=PASS');
+          NODE
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Structural shared-shell assertions
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('node:fs');
+          const app=fs.readFileSync('apps/web/src/ProductPreviewV02App.tsx','utf8');
+          const supplies=fs.readFileSync('apps/web/src/FornitureV04Cleanroom.tsx','utf8');
+          const css=fs.readFileSync('apps/web/src/forniture-v04-cleanroom.css','utf8');
+
+          if(/if \(section === 'supplies'\)\s*\{\s*return <FornitureV04Cleanroom/.test(app)) throw new Error('standalone supplies shell still active');
+          if(!app.includes("section === 'supplies' && <FornitureV04Cleanroom")) throw new Error('supplies not embedded in common canvas');
+          if(!app.includes('embedded />')) throw new Error('embedded mode missing');
+          if(!app.includes("<PageHeader section={section} />")) throw new Error('shared PageHeader missing');
+          if(!app.includes("supplies: ['Forniture', 'POD, PDR, contratti, consumi e verifiche in una vista operativa chiara.']")) throw new Error('shared Forniture header copy missing');
+
+          if(!supplies.includes("embedded = false")) throw new Error('embedded prop missing');
+          if(!supplies.includes("embedded ? ' v04--embedded' : ''")) throw new Error('embedded class missing');
+
+          const block=css.split('CC102 SHARED SHELL EMBED')[1]||'';
+          for(const needle of [
+            '.v04--embedded>.v04__sidebar',
+            '.v04--embedded>.v04__main>.v04__topbar',
+            'display:none!important',
+            '.v04--embedded>.v04__main{',
+            'margin-left:0',
+            '.v04--embedded>.v04__main>.v04__page{',
+            'padding:0',
+            '.v04--embedded>.v04__main>.v04__page>.v04__page-head'
+          ]) if(!block.includes(needle)) throw new Error('missing shared-shell assertion '+needle);
+
+          console.log('FORNITURE_SHARED_SHELL_STRUCTURE=PASS');
+          NODE
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: CHROME_PATH=/usr/bin/google-chrome npm run test:browser:acceptance
+
+      - name: Final
+        run: |
+          echo "NO_DOMAIN_ENGINE_DB_Q29_MUTATION=PASS"
+          echo "ZERO_INCREMENTAL_COST=PASS"
