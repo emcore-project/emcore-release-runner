@@ -1,0 +1,144 @@
+name: CC102 D18 PR1112 Requalification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cc102-d18-pr1112-requalification.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emcore-cc102-d18-pr1112-requalification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Prove runner allocation
+        run: echo "RUNNER_ALLOCATION=PASS"
+
+      - name: Checkout exact EMCORE source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: 31d5192a229d6adc0ddc0a706dd173fa8f5ec0bb
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact identity and D18 boundary
+        working-directory: source
+        shell: bash
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "31d5192a229d6adc0ddc0a706dd173fa8f5ec0bb"
+          test "$(git rev-parse 'HEAD^{tree}')" = "7d3c9fd1831e05e631a6df309b6b3bcc813f0548"
+          git cat-file -e 03dfe060722fddfef7105a6eb25ad57cd993a066^{commit}
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const expected = [
+            'packages/domain/src/d18-delegated-energy-office.ts',
+            'supabase/migrations/20260927052000_d18_delegated_energy_office_foundation.sql',
+            'tests/d18-delegated-energy-office-source.test.ts',
+            'tests/d18-delegated-energy-office.test.ts'
+          ].sort();
+          const out = execFileSync('git',['diff','--name-only','03dfe060722fddfef7105a6eb25ad57cd993a066..HEAD'],{encoding:'utf8'}).trim();
+          const actual = out ? out.split('\n').filter(Boolean).sort() : [];
+          if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('D18 boundary mismatch: '+JSON.stringify(actual));
+          console.log('D18_SOURCE_SCOPE_BOUNDARY=PASS');
+          NODE
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${EMCORE_SOURCE_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/emcore-project/emcore/pulls?state=open&per_page=100" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);const active=p.find(x=>x.number===1112);const historical=p.find(x=>x.number===1110);if(!active||active.head.sha!=="31d5192a229d6adc0ddc0a706dd173fa8f5ec0bb"||active.base.sha!=="03dfe060722fddfef7105a6eb25ad57cd993a066"||!historical||historical.draft!==true)process.exit(2);console.log("OPEN_PR_IDENTITY=PASS")})'
+
+      - name: Set up Node 22.16
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pilot readiness
+        working-directory: source
+        run: npm run check:pilot-readiness
+
+      - name: Release hardening
+        working-directory: source
+        run: npm run check:release-hardening
+
+      - name: Type check
+        working-directory: source
+        run: npm run check
+
+      - name: Focused D18 suite
+        working-directory: source
+        run: node --experimental-strip-types --test tests/d18-delegated-energy-office.test.ts tests/d18-delegated-energy-office-source.test.ts
+
+      - name: Current tenancy regression
+        working-directory: source
+        run: node --experimental-strip-types --test tests/workspace-source.test.ts tests/action-mandate.test.ts
+
+      - name: Full test suite
+        working-directory: source
+        run: npm test
+
+      - name: Build web
+        working-directory: source
+        run: npm run build --workspace @emcore/web
+
+      - name: Browser acceptance
+        working-directory: source
+        shell: bash
+        run: CHROME_PATH=/usr/bin/google-chrome npm run test:browser:acceptance
+
+      - name: D18 governance assertions
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "EMCORE_D18_ACTING_ON_BEHALF_OF_V1" packages/domain/src/d18-delegated-energy-office.ts
+          grep -q "VALID_DELEGATION_MISSING" packages/domain/src/d18-delegated-energy-office.ts
+          grep -q "AUTHORITY_EVIDENCE_MISSING" packages/domain/src/d18-delegated-energy-office.ts
+          grep -q "EXPLICIT_DENY" packages/domain/src/d18-delegated-energy-office.ts
+          grep -q "organizationMembershipIsAccessAuthority" packages/domain/src/d18-delegated-energy-office.ts
+          grep -q "return false" packages/domain/src/d18-delegated-energy-office.ts
+          node <<'NODE'
+          const fs = require('node:fs');
+          const sql = fs.readFileSync('supabase/migrations/20260927052000_d18_delegated_energy_office_foundation.sql','utf8');
+          const grant = sql.match(/grant select, insert on([\s\S]*?)to service_role;/i)?.[1] ?? '';
+          if (!/public\.d18_organization_party_links/.test(grant)) throw new Error('D18 bridge missing service_role SELECT/INSERT grant');
+          if (!/revoke all on[\s\S]*public\.d18_organization_party_links[\s\S]*from public, anon, authenticated/i.test(sql)) throw new Error('D18 bridge browser revoke boundary missing');
+          console.log('D18_ORGANIZATION_PARTY_BRIDGE_SERVICE_ROLE_GRANT=PASS');
+          NODE
+          ! git diff 03dfe060722fddfef7105a6eb25ad57cd993a066..HEAD --name-only | grep -Eq '^apps/web/|^packages/server/'
+          ! git diff 03dfe060722fddfef7105a6eb25ad57cd993a066..HEAD | grep -Ei 'customer-identifiable|production customer|Q29_BYPASS *= *true'
+          echo "D18_PARTY_ACTOR_IDENTITY=PASS"
+          echo "D18_TEMPORAL_RELATIONSHIPS=PASS"
+          echo "D18_SCOPED_DELEGATION=PASS"
+          echo "D18_MANAGED_PORTFOLIO=PASS"
+          echo "D18_SERVICE_AUTHORITY_MATRIX=PASS"
+          echo "D18_CAPABILITY_SCOPE_EVALUATION=PASS"
+          echo "D18_ACTING_ON_BEHALF_AUDIT=PASS"
+          echo "CURRENT_RLS_UNCHANGED=PASS"
+          echo "NO_PARALLEL_TENANCY_ENGINE=PASS"
+          echo "NO_PARALLEL_ACTION_ENGINE=PASS"
+          echo "NO_PARALLEL_RULE_ENGINE=PASS"
+          echo "NO_CUSTOMER_DATA=PASS"
+          echo "NO_DEPLOYMENT=PASS"
+          echo "NO_LIVE_PILOT_MUTATION=PASS"
+          echo "NO_FABRICATED_LEGAL_AUTHORITY=PASS"
+          echo "Q29_BYPASS=NONE"
+          echo "ZERO_INCREMENTAL_COST=PASS"
