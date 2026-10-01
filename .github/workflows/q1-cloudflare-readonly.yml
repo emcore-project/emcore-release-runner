@@ -107,6 +107,70 @@ jobs:
         shell: bash
         run: npm ci --ignore-scripts --no-audit --no-fund
 
+      - name: Read Cloudflare account cost state and fail closed
+        if: steps.request.outputs.mode == 'QUALIFY'
+        working-directory: source
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          set +x
+          whoami_json="$(npm exec --workspace @emcore/web -- wrangler whoami --json)" || {
+            echo "Cloudflare account identity read failed; fail closed."
+            exit 1
+          }
+          account_id="$(printf '%s' "$whoami_json" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const body=JSON.parse(s);
+              const ids=[];
+              const visit=(v,k="")=>{
+                if (!v || typeof v!=="object") return;
+                if (Array.isArray(v)) return v.forEach(x=>visit(x,k));
+                for (const [key,val] of Object.entries(v)) {
+                  if ((key==="account_id" || key==="accountId") && typeof val==="string") ids.push(val);
+                  if (key==="accounts" && Array.isArray(val)) {
+                    for (const a of val) if (a && typeof a.id==="string") ids.push(a.id);
+                  }
+                  visit(val,key);
+                }
+              };
+              visit(body);
+              const unique=[...new Set(ids.filter(x=>/^[A-Za-z0-9_-]{16,64}$/.test(x)))];
+              if (unique.length!==1) process.exit(2);
+              process.stdout.write(unique[0]);
+            });
+          ')" || {
+            echo "Unable to resolve one Cloudflare account ID read-only; fail closed."
+            exit 1
+          }
+          response="$(curl --fail-with-body --silent --show-error \\
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \\
+            -H "Accept: application/json" \\
+            "https://api.cloudflare.com/client/v4/accounts/$account_id/subscriptions")" || {
+            echo "Cloudflare billing/subscription read failed; Billing Read permission is required; fail closed."
+            exit 1
+          }
+          printf '%s' "$response" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const body=JSON.parse(s);
+              if (body.success!==true || !Array.isArray(body.result)) {
+                throw new Error("Malformed Cloudflare subscription response");
+              }
+              for (const sub of body.result) {
+                if (typeof sub.price!=="number") {
+                  throw new Error("Subscription cost is not explicitly readable; fail closed");
+                }
+                if (sub.price!==0) {
+                  throw new Error("Non-zero Cloudflare subscription detected; zero-cost gate failed");
+                }
+              }
+              console.log("CLOUDFLARE_ACCOUNT_COST_STATE=ZERO_COST_READ_ONLY_PASS");
+            });
+          '
+
       - name: Read current deployment state for target Worker only
         if: steps.request.outputs.mode == 'QUALIFY'
         working-directory: source
