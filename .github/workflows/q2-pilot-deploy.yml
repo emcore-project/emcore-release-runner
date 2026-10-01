@@ -155,10 +155,7 @@ jobs:
             echo "Unable to resolve one Cloudflare account ID read-only; fail closed."
             exit 1
           }
-          response="$(curl --fail-with-body --silent --show-error \\
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \\
-            -H "Accept: application/json" \\
-            "https://api.cloudflare.com/client/v4/accounts/$account_id/subscriptions")" || {
+          response="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Accept: application/json" "https://api.cloudflare.com/client/v4/accounts/$account_id/subscriptions")" || {
             echo "Cloudflare billing/subscription read failed; Billing Read permission is required; fail closed."
             exit 1
           }
