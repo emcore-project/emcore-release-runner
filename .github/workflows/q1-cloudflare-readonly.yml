@@ -32,8 +32,8 @@ jobs:
           const required = {
             schema: 'emcore.q1-request.v1',
             source_repository: 'emcore-project/emcore',
-            source_commit: 'f57337c622d533a0200e51fcdf798deae5130754',
-            source_tree: 'cd36bfbf4dc333b8d144b847ab13e169e183eae9',
+            source_commit: 'd7c8146b7051ffed37374c25da8208d693cfd08a',
+            source_tree: 'ca746ba4ea8e6a38f50e5c1c55a3a4e371abc61a',
             expected_open_pr_count: 0,
             target_worker: 'emcore-web-pilot',
             cloudflare_read_only: true,
@@ -68,7 +68,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: f57337c622d533a0200e51fcdf798deae5130754
+          ref: d7c8146b7051ffed37374c25da8208d693cfd08a
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -79,8 +79,8 @@ jobs:
         shell: bash
         working-directory: source
         run: |
-          test "$(git rev-parse HEAD)" = "f57337c622d533a0200e51fcdf798deae5130754" || { echo "Commit mismatch; fail closed."; exit 1; }
-          test "$(git rev-parse 'HEAD^{tree}')" = "cd36bfbf4dc333b8d144b847ab13e169e183eae9" || { echo "Tree mismatch; fail closed."; exit 1; }
+          test "$(git rev-parse HEAD)" = "d7c8146b7051ffed37374c25da8208d693cfd08a" || { echo "Commit mismatch; fail closed."; exit 1; }
+          test "$(git rev-parse 'HEAD^{tree}')" = "ca746ba4ea8e6a38f50e5c1c55a3a4e371abc61a" || { echo "Tree mismatch; fail closed."; exit 1; }
           echo "Exact source identity verified."
 
       - name: Verify zero open source pull requests
@@ -106,6 +106,70 @@ jobs:
         working-directory: source
         shell: bash
         run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Read Cloudflare account cost state and fail closed
+        if: steps.request.outputs.mode == 'QUALIFY'
+        working-directory: source
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          set +x
+          whoami_json="$(npm exec --workspace @emcore/web -- wrangler whoami --json)" || {
+            echo "Cloudflare account identity read failed; fail closed."
+            exit 1
+          }
+          account_id="$(printf '%s' "$whoami_json" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const body=JSON.parse(s);
+              const ids=[];
+              const visit=(v,k="")=>{
+                if (!v || typeof v!=="object") return;
+                if (Array.isArray(v)) return v.forEach(x=>visit(x,k));
+                for (const [key,val] of Object.entries(v)) {
+                  if ((key==="account_id" || key==="accountId") && typeof val==="string") ids.push(val);
+                  if (key==="accounts" && Array.isArray(val)) {
+                    for (const a of val) if (a && typeof a.id==="string") ids.push(a.id);
+                  }
+                  visit(val,key);
+                }
+              };
+              visit(body);
+              const unique=[...new Set(ids.filter(x=>/^[A-Za-z0-9_-]{16,64}$/.test(x)))];
+              if (unique.length!==1) process.exit(2);
+              process.stdout.write(unique[0]);
+            });
+          ')" || {
+            echo "Unable to resolve one Cloudflare account ID read-only; fail closed."
+            exit 1
+          }
+          response="$(curl --fail-with-body --silent --show-error \\
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \\
+            -H "Accept: application/json" \\
+            "https://api.cloudflare.com/client/v4/accounts/$account_id/subscriptions")" || {
+            echo "Cloudflare billing/subscription read failed; Billing Read permission is required; fail closed."
+            exit 1
+          }
+          printf '%s' "$response" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const body=JSON.parse(s);
+              if (body.success!==true || !Array.isArray(body.result)) {
+                throw new Error("Malformed Cloudflare subscription response");
+              }
+              for (const sub of body.result) {
+                if (typeof sub.price!=="number") {
+                  throw new Error("Subscription cost is not explicitly readable; fail closed");
+                }
+                if (sub.price!==0) {
+                  throw new Error("Non-zero Cloudflare subscription detected; zero-cost gate failed");
+                }
+              }
+              console.log("CLOUDFLARE_ACCOUNT_COST_STATE=ZERO_COST_READ_ONLY_PASS");
+            });
+          '
 
       - name: Read current deployment state for target Worker only
         if: steps.request.outputs.mode == 'QUALIFY'

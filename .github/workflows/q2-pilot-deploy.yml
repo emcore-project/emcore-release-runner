@@ -32,8 +32,8 @@ jobs:
           const required = {
             schema: 'emcore.q2-request.v1',
             source_repository: 'emcore-project/emcore',
-            release_commit: 'f57337c622d533a0200e51fcdf798deae5130754',
-            release_tree: 'cd36bfbf4dc333b8d144b847ab13e169e183eae9',
+            release_commit: 'd7c8146b7051ffed37374c25da8208d693cfd08a',
+            release_tree: 'ca746ba4ea8e6a38f50e5c1c55a3a4e371abc61a',
             expected_open_pr_count: 0,
             target_worker: 'emcore-web-pilot',
             target_config: 'apps/web/wrangler.pilot.jsonc',
@@ -76,7 +76,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: f57337c622d533a0200e51fcdf798deae5130754
+          ref: d7c8146b7051ffed37374c25da8208d693cfd08a
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -89,8 +89,8 @@ jobs:
         run: |
           actual_commit="$(git rev-parse HEAD)"
           actual_tree="$(git rev-parse 'HEAD^{tree}')"
-          test "$actual_commit" = "f57337c622d533a0200e51fcdf798deae5130754" || { echo "Commit drift; fail closed."; exit 1; }
-          test "$actual_tree" = "cd36bfbf4dc333b8d144b847ab13e169e183eae9" || { echo "Tree drift; fail closed."; exit 1; }
+          test "$actual_commit" = "d7c8146b7051ffed37374c25da8208d693cfd08a" || { echo "Commit drift; fail closed."; exit 1; }
+          test "$actual_tree" = "ca746ba4ea8e6a38f50e5c1c55a3a4e371abc61a" || { echo "Tree drift; fail closed."; exit 1; }
           echo "Exact accepted source identity verified."
 
       - name: Verify zero open source pull requests
@@ -117,6 +117,70 @@ jobs:
         shell: bash
         run: npm ci --ignore-scripts --no-audit --no-fund
 
+      - name: Read Cloudflare account cost state and fail closed
+        if: steps.request.outputs.mode == 'DEPLOY'
+        working-directory: source
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          set +x
+          whoami_json="$(npm exec --workspace @emcore/web -- wrangler whoami --json)" || {
+            echo "Cloudflare account identity read failed; fail closed."
+            exit 1
+          }
+          account_id="$(printf '%s' "$whoami_json" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const body=JSON.parse(s);
+              const ids=[];
+              const visit=(v,k="")=>{
+                if (!v || typeof v!=="object") return;
+                if (Array.isArray(v)) return v.forEach(x=>visit(x,k));
+                for (const [key,val] of Object.entries(v)) {
+                  if ((key==="account_id" || key==="accountId") && typeof val==="string") ids.push(val);
+                  if (key==="accounts" && Array.isArray(val)) {
+                    for (const a of val) if (a && typeof a.id==="string") ids.push(a.id);
+                  }
+                  visit(val,key);
+                }
+              };
+              visit(body);
+              const unique=[...new Set(ids.filter(x=>/^[A-Za-z0-9_-]{16,64}$/.test(x)))];
+              if (unique.length!==1) process.exit(2);
+              process.stdout.write(unique[0]);
+            });
+          ')" || {
+            echo "Unable to resolve one Cloudflare account ID read-only; fail closed."
+            exit 1
+          }
+          response="$(curl --fail-with-body --silent --show-error \\
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \\
+            -H "Accept: application/json" \\
+            "https://api.cloudflare.com/client/v4/accounts/$account_id/subscriptions")" || {
+            echo "Cloudflare billing/subscription read failed; Billing Read permission is required; fail closed."
+            exit 1
+          }
+          printf '%s' "$response" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const body=JSON.parse(s);
+              if (body.success!==true || !Array.isArray(body.result)) {
+                throw new Error("Malformed Cloudflare subscription response");
+              }
+              for (const sub of body.result) {
+                if (typeof sub.price!=="number") {
+                  throw new Error("Subscription cost is not explicitly readable; fail closed");
+                }
+                if (sub.price!==0) {
+                  throw new Error("Non-zero Cloudflare subscription detected; zero-cost gate failed");
+                }
+              }
+              console.log("CLOUDFLARE_ACCOUNT_COST_STATE=ZERO_COST_READ_ONLY_PASS");
+            });
+          '
+
       - name: Re-run PILOT readiness gate
         if: steps.request.outputs.mode == 'DEPLOY'
         working-directory: source
@@ -134,8 +198,8 @@ jobs:
         working-directory: source
         shell: bash
         env:
-          EMCORE_RELEASE_COMMIT: f57337c622d533a0200e51fcdf798deae5130754
-          EMCORE_RELEASE_TREE: cd36bfbf4dc333b8d144b847ab13e169e183eae9
+          EMCORE_RELEASE_COMMIT: d7c8146b7051ffed37374c25da8208d693cfd08a
+          EMCORE_RELEASE_TREE: ca746ba4ea8e6a38f50e5c1c55a3a4e371abc61a
           EMCORE_OPEN_RELEASE_PRS: '0'
           EMCORE_C6_ACCEPTED: 'true'
           EMCORE_C7_ACCEPTED: 'true'
@@ -152,7 +216,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           EMCORE_PILOT_COST_MODE: zero
-          WORKERS_CI_COMMIT_SHA: f57337c622d533a0200e51fcdf798deae5130754
+          WORKERS_CI_COMMIT_SHA: d7c8146b7051ffed37374c25da8208d693cfd08a
         run: |
           set +x
           npm run deploy:cloudflare:pilot -- apps/web/wrangler.pilot.jsonc
@@ -206,7 +270,7 @@ jobs:
           });
           if (!response.ok) throw new Error(`deployment-identity HTTP ${response.status}`);
           const body = await response.json();
-          if (body.commitSha !== 'f57337c622d533a0200e51fcdf798deae5130754') {
+          if (body.commitSha !== 'd7c8146b7051ffed37374c25da8208d693cfd08a') {
             throw new Error('live deployment identity mismatch');
           }
           console.log('Live deployment identity matches exact accepted release SHA.');
@@ -219,7 +283,7 @@ jobs:
         env:
           EMCORE_PILOT_BASE_URL: https://emcore-web-pilot.emcore-project.workers.dev
           EMCORE_PILOT_ORGANIZATION_ID: 00605bb8-3899-406e-a428-d7779e856bb2
-          EMCORE_PILOT_EXPECTED_COMMIT: f57337c622d533a0200e51fcdf798deae5130754
+          EMCORE_PILOT_EXPECTED_COMMIT: d7c8146b7051ffed37374c25da8208d693cfd08a
         run: npm run test:pilot:live
 
       - name: Record authenticated AAL2 automation boundary
