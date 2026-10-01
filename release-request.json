@@ -2,8 +2,8 @@
   "schema": "emcore.release-request.v1",
   "mode": "QUALIFY",
   "source_repository": "emcore-project/emcore",
-  "release_commit": "f57337c622d533a0200e51fcdf798deae5130754",
-  "release_tree": "cd36bfbf4dc333b8d144b847ab13e169e183eae9",
+  "release_commit": "d7c8146b7051ffed37374c25da8208d693cfd08a",
+  "release_tree": "ca746ba4ea8e6a38f50e5c1c55a3a4e371abc61a",
   "expected_open_pr_count": 0,
   "deployment_authorized": false,
   "cloudflare_access_authorized": false
