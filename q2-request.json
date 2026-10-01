@@ -1,6 +1,7 @@
 {
   "schema": "emcore.q2-request.v1",
   "mode": "IDLE",
+
   "source_repository": "emcore-project/emcore",
   "release_commit": "96bb5469151d59b22142dbaa33cc31de7b8bcc67",
   "release_tree": "e7d32dd37c0c8a5f08cb3b0b64fe94cdf4445cc8",
