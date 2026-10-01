@@ -32,8 +32,8 @@ jobs:
           const required = {
             schema: 'emcore.release-request.v1',
             source_repository: 'emcore-project/emcore',
-            release_commit: 'd7c8146b7051ffed37374c25da8208d693cfd08a',
-            release_tree: 'ca746ba4ea8e6a38f50e5c1c55a3a4e371abc61a',
+            release_commit: '96bb5469151d59b22142dbaa33cc31de7b8bcc67',
+            release_tree: 'e7d32dd37c0c8a5f08cb3b0b64fe94cdf4445cc8',
             expected_open_pr_count: 0,
             deployment_authorized: false,
             cloudflare_access_authorized: false,
@@ -70,7 +70,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: d7c8146b7051ffed37374c25da8208d693cfd08a
+          ref: 96bb5469151d59b22142dbaa33cc31de7b8bcc67
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -83,11 +83,11 @@ jobs:
         run: |
           actual_commit="$(git rev-parse HEAD)"
           actual_tree="$(git rev-parse 'HEAD^{tree}')"
-          test "$actual_commit" = "d7c8146b7051ffed37374c25da8208d693cfd08a" || {
+          test "$actual_commit" = "96bb5469151d59b22142dbaa33cc31de7b8bcc67" || {
             echo "Commit mismatch; fail closed."
             exit 1
           }
-          test "$actual_tree" = "ca746ba4ea8e6a38f50e5c1c55a3a4e371abc61a" || {
+          test "$actual_tree" = "e7d32dd37c0c8a5f08cb3b0b64fe94cdf4445cc8" || {
             echo "Tree mismatch; fail closed."
             exit 1
           }
@@ -125,8 +125,8 @@ jobs:
         working-directory: source
         shell: bash
         env:
-          EMCORE_RELEASE_COMMIT: d7c8146b7051ffed37374c25da8208d693cfd08a
-          EMCORE_RELEASE_TREE: ca746ba4ea8e6a38f50e5c1c55a3a4e371abc61a
+          EMCORE_RELEASE_COMMIT: 96bb5469151d59b22142dbaa33cc31de7b8bcc67
+          EMCORE_RELEASE_TREE: e7d32dd37c0c8a5f08cb3b0b64fe94cdf4445cc8
           EMCORE_OPEN_RELEASE_PRS: '0'
           EMCORE_C6_ACCEPTED: 'true'
           EMCORE_C7_ACCEPTED: 'true'
