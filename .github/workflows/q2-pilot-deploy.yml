@@ -32,8 +32,8 @@ jobs:
           const required = {
             schema: 'emcore.q2-request.v1',
             source_repository: 'emcore-project/emcore',
-            release_commit: '96bb5469151d59b22142dbaa33cc31de7b8bcc67',
-            release_tree: 'e7d32dd37c0c8a5f08cb3b0b64fe94cdf4445cc8',
+            release_commit: 'e67beca17634345b3073bde2a63c3f8c124935f1',
+            release_tree: 'e840f09b8d6e1f06377241ad6b0deec57fa8ba35',
             expected_open_pr_count: 0,
             target_worker: 'emcore-web-pilot',
             target_config: 'apps/web/wrangler.pilot.jsonc',
@@ -76,7 +76,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 96bb5469151d59b22142dbaa33cc31de7b8bcc67
+          ref: e67beca17634345b3073bde2a63c3f8c124935f1
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -89,8 +89,8 @@ jobs:
         run: |
           actual_commit="$(git rev-parse HEAD)"
           actual_tree="$(git rev-parse 'HEAD^{tree}')"
-          test "$actual_commit" = "96bb5469151d59b22142dbaa33cc31de7b8bcc67" || { echo "Commit drift; fail closed."; exit 1; }
-          test "$actual_tree" = "e7d32dd37c0c8a5f08cb3b0b64fe94cdf4445cc8" || { echo "Tree drift; fail closed."; exit 1; }
+          test "$actual_commit" = "e67beca17634345b3073bde2a63c3f8c124935f1" || { echo "Commit drift; fail closed."; exit 1; }
+          test "$actual_tree" = "e840f09b8d6e1f06377241ad6b0deec57fa8ba35" || { echo "Tree drift; fail closed."; exit 1; }
           echo "Exact accepted source identity verified."
 
       - name: Verify zero open source pull requests
@@ -195,8 +195,8 @@ jobs:
         working-directory: source
         shell: bash
         env:
-          EMCORE_RELEASE_COMMIT: 96bb5469151d59b22142dbaa33cc31de7b8bcc67
-          EMCORE_RELEASE_TREE: e7d32dd37c0c8a5f08cb3b0b64fe94cdf4445cc8
+          EMCORE_RELEASE_COMMIT: e67beca17634345b3073bde2a63c3f8c124935f1
+          EMCORE_RELEASE_TREE: e840f09b8d6e1f06377241ad6b0deec57fa8ba35
           EMCORE_OPEN_RELEASE_PRS: '0'
           EMCORE_C6_ACCEPTED: 'true'
           EMCORE_C7_ACCEPTED: 'true'
@@ -204,8 +204,8 @@ jobs:
           EMCORE_WAVE1_ACCEPTED: 'true'
           EMCORE_WAVE2_ACCEPTED: 'true'
           EMCORE_CURRENT_MAIN_FULL_GATE_ACCEPTED: 'true'
-          EMCORE_CURRENT_MAIN_FULL_GATE_SOURCE_COMMIT: 96bb5469151d59b22142dbaa33cc31de7b8bcc67
-          EMCORE_CURRENT_MAIN_FULL_GATE_RUN_ID: '36907518874'
+          EMCORE_CURRENT_MAIN_FULL_GATE_SOURCE_COMMIT: e67beca17634345b3073bde2a63c3f8c124935f1
+          EMCORE_CURRENT_MAIN_FULL_GATE_RUN_ID: '36911488415'
           EMCORE_ZERO_COST_VERIFIED: 'true'
         run: npm run check:release-predeploy
 
@@ -216,7 +216,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           EMCORE_PILOT_COST_MODE: zero
-          WORKERS_CI_COMMIT_SHA: 96bb5469151d59b22142dbaa33cc31de7b8bcc67
+          WORKERS_CI_COMMIT_SHA: e67beca17634345b3073bde2a63c3f8c124935f1
         run: |
           set +x
           npm run deploy:cloudflare:pilot -- apps/web/wrangler.pilot.jsonc
@@ -270,7 +270,7 @@ jobs:
           });
           if (!response.ok) throw new Error(`deployment-identity HTTP ${response.status}`);
           const body = await response.json();
-          if (body.commitSha !== '96bb5469151d59b22142dbaa33cc31de7b8bcc67') {
+          if (body.commitSha !== 'e67beca17634345b3073bde2a63c3f8c124935f1') {
             throw new Error('live deployment identity mismatch');
           }
           console.log('Live deployment identity matches exact accepted release SHA.');
@@ -283,7 +283,7 @@ jobs:
         env:
           EMCORE_PILOT_BASE_URL: https://emcore-web-pilot.emcore-project.workers.dev
           EMCORE_PILOT_ORGANIZATION_ID: 00605bb8-3899-406e-a428-d7779e856bb2
-          EMCORE_PILOT_EXPECTED_COMMIT: 96bb5469151d59b22142dbaa33cc31de7b8bcc67
+          EMCORE_PILOT_EXPECTED_COMMIT: e67beca17634345b3073bde2a63c3f8c124935f1
         run: npm run test:pilot:live
 
       - name: Record authenticated AAL2 automation boundary
