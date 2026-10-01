@@ -133,6 +133,9 @@ jobs:
           EMCORE_G9_ACCEPTED: 'true'
           EMCORE_WAVE1_ACCEPTED: 'true'
           EMCORE_WAVE2_ACCEPTED: 'true'
+          EMCORE_CURRENT_MAIN_FULL_GATE_ACCEPTED: 'true'
+          EMCORE_CURRENT_MAIN_FULL_GATE_SOURCE_COMMIT: 96bb5469151d59b22142dbaa33cc31de7b8bcc67
+          EMCORE_CURRENT_MAIN_FULL_GATE_RUN_ID: '36907518874'
           EMCORE_ZERO_COST_VERIFIED: 'true'
         run: npm run check:release-predeploy
 
