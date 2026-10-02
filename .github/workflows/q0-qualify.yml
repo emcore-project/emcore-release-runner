@@ -32,8 +32,8 @@ jobs:
           const required = {
             schema: 'emcore.release-request.v1',
             source_repository: 'emcore-project/emcore',
-            release_commit: '794600ddf6369bbd690d737e9ac3eb6950e9780c',
-            release_tree: 'ad764a1cf6c807a1a34a21f157e035636329f45e',
+            release_commit: 'dc876cdc5797b5d4edb5c4699099d850114b4035',
+            release_tree: 'b9aa431da498c0935a62208be2fca30d807f37e0',
             expected_open_pr_count: 0,
             deployment_authorized: false,
             cloudflare_access_authorized: false,
@@ -70,7 +70,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 794600ddf6369bbd690d737e9ac3eb6950e9780c
+          ref: dc876cdc5797b5d4edb5c4699099d850114b4035
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -83,11 +83,11 @@ jobs:
         run: |
           actual_commit="$(git rev-parse HEAD)"
           actual_tree="$(git rev-parse 'HEAD^{tree}')"
-          test "$actual_commit" = "794600ddf6369bbd690d737e9ac3eb6950e9780c" || {
+          test "$actual_commit" = "dc876cdc5797b5d4edb5c4699099d850114b4035" || {
             echo "Commit mismatch; fail closed."
             exit 1
           }
-          test "$actual_tree" = "ad764a1cf6c807a1a34a21f157e035636329f45e" || {
+          test "$actual_tree" = "b9aa431da498c0935a62208be2fca30d807f37e0" || {
             echo "Tree mismatch; fail closed."
             exit 1
           }
@@ -125,8 +125,8 @@ jobs:
         working-directory: source
         shell: bash
         env:
-          EMCORE_RELEASE_COMMIT: 794600ddf6369bbd690d737e9ac3eb6950e9780c
-          EMCORE_RELEASE_TREE: ad764a1cf6c807a1a34a21f157e035636329f45e
+          EMCORE_RELEASE_COMMIT: dc876cdc5797b5d4edb5c4699099d850114b4035
+          EMCORE_RELEASE_TREE: b9aa431da498c0935a62208be2fca30d807f37e0
           EMCORE_OPEN_RELEASE_PRS: '0'
           EMCORE_C6_ACCEPTED: 'true'
           EMCORE_C7_ACCEPTED: 'true'
@@ -134,8 +134,8 @@ jobs:
           EMCORE_WAVE1_ACCEPTED: 'true'
           EMCORE_WAVE2_ACCEPTED: 'true'
           EMCORE_CURRENT_MAIN_FULL_GATE_ACCEPTED: 'true'
-          EMCORE_CURRENT_MAIN_FULL_GATE_SOURCE_COMMIT: 794600ddf6369bbd690d737e9ac3eb6950e9780c
-          EMCORE_CURRENT_MAIN_FULL_GATE_RUN_ID: '37023872671'
+          EMCORE_CURRENT_MAIN_FULL_GATE_SOURCE_COMMIT: dc876cdc5797b5d4edb5c4699099d850114b4035
+          EMCORE_CURRENT_MAIN_FULL_GATE_RUN_ID: '37039624679'
           EMCORE_ZERO_COST_VERIFIED: 'true'
         run: npm run check:release-predeploy
 
