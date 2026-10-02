@@ -3,8 +3,8 @@
   "mode": "IDLE",
 
   "source_repository": "emcore-project/emcore",
-  "source_commit": "63580ae1eb0b10a85b0986a342bf317bff4b4796",
-  "source_tree": "9e86a0ffb06fbf83f2927f91725bd08b60daa17a",
+  "source_commit": "f26a6a23b8efd4828f6605ea2c1e9d90241167e7",
+  "source_tree": "47aa9eee6cdcd4eff82255ac0d9b43f657c0348c",
   "expected_open_pr_count": 0,
   "target_worker": "emcore-web-pilot",
   "cloudflare_read_only": true,
