@@ -3,8 +3,8 @@
   "mode": "IDLE",
 
   "source_repository": "emcore-project/emcore",
-  "release_commit": "c752990cd15fc75f127941c6982ae6baeb675294",
-  "release_tree": "803f7fa8077e147084ab83f6c0ddf0f580201c2d",
+  "release_commit": "5b34eb2134dfcd7700ac327fb6eec35b847909e3",
+  "release_tree": "5196083a9f7e75fc14b764698c114f3e10d558e8",
   "expected_open_pr_count": 0,
   "target_worker": "emcore-web-pilot",
   "target_config": "apps/web/wrangler.pilot.jsonc",
