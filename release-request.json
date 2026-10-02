@@ -3,8 +3,8 @@
   "mode": "QUALIFY",
 
   "source_repository": "emcore-project/emcore",
-  "release_commit": "794600ddf6369bbd690d737e9ac3eb6950e9780c",
-  "release_tree": "ad764a1cf6c807a1a34a21f157e035636329f45e",
+  "release_commit": "dc876cdc5797b5d4edb5c4699099d850114b4035",
+  "release_tree": "b9aa431da498c0935a62208be2fca30d807f37e0",
   "expected_open_pr_count": 0,
   "deployment_authorized": false,
   "cloudflare_access_authorized": false
