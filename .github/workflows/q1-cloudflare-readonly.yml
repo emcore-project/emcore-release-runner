@@ -32,8 +32,8 @@ jobs:
           const required = {
             schema: 'emcore.q1-request.v1',
             source_repository: 'emcore-project/emcore',
-            source_commit: 'c752990cd15fc75f127941c6982ae6baeb675294',
-            source_tree: '803f7fa8077e147084ab83f6c0ddf0f580201c2d',
+            source_commit: '5b34eb2134dfcd7700ac327fb6eec35b847909e3',
+            source_tree: '5196083a9f7e75fc14b764698c114f3e10d558e8',
             expected_open_pr_count: 0,
             target_worker: 'emcore-web-pilot',
             cloudflare_read_only: true,
@@ -68,7 +68,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: c752990cd15fc75f127941c6982ae6baeb675294
+          ref: 5b34eb2134dfcd7700ac327fb6eec35b847909e3
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -79,8 +79,8 @@ jobs:
         shell: bash
         working-directory: source
         run: |
-          test "$(git rev-parse HEAD)" = "c752990cd15fc75f127941c6982ae6baeb675294" || { echo "Commit mismatch; fail closed."; exit 1; }
-          test "$(git rev-parse 'HEAD^{tree}')" = "803f7fa8077e147084ab83f6c0ddf0f580201c2d" || { echo "Tree mismatch; fail closed."; exit 1; }
+          test "$(git rev-parse HEAD)" = "5b34eb2134dfcd7700ac327fb6eec35b847909e3" || { echo "Commit mismatch; fail closed."; exit 1; }
+          test "$(git rev-parse 'HEAD^{tree}')" = "5196083a9f7e75fc14b764698c114f3e10d558e8" || { echo "Tree mismatch; fail closed."; exit 1; }
           echo "Exact source identity verified."
 
       - name: Verify zero open source pull requests
