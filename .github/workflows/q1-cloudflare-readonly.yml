@@ -59,9 +59,11 @@ jobs:
         env:
           EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_BILLING_READ_TOKEN: ${{ secrets.CLOUDFLARE_BILLING_READ_TOKEN }}
         run: |
           test -n "$EMCORE_SOURCE_TOKEN" || { echo "EMCORE_SOURCE_TOKEN missing; fail closed."; exit 1; }
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN missing; fail closed."; exit 1; }
+          test -n "$CLOUDFLARE_BILLING_READ_TOKEN" || { echo "CLOUDFLARE_BILLING_READ_TOKEN missing; fail closed."; exit 1; }
 
       - name: Checkout exact private EMCORE source
         if: steps.request.outputs.mode == 'QUALIFY'
@@ -113,6 +115,7 @@ jobs:
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_BILLING_READ_TOKEN: ${{ secrets.CLOUDFLARE_BILLING_READ_TOKEN }}
         run: |
           set -euo pipefail
           set +x
@@ -145,7 +148,7 @@ jobs:
             echo "Unable to resolve one Cloudflare account ID read-only; fail closed."
             exit 1
           }
-          response="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Accept: application/json" "https://api.cloudflare.com/client/v4/accounts/$account_id/subscriptions")" || {
+          response="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CLOUDFLARE_BILLING_READ_TOKEN" -H "Accept: application/json" "https://api.cloudflare.com/client/v4/accounts/$account_id/subscriptions")" || {
             echo "Cloudflare billing/subscription read failed; Billing Read permission is required; fail closed."
             exit 1
           }
@@ -196,5 +199,5 @@ jobs:
         if: steps.request.outputs.mode == 'QUALIFY'
         shell: bash
         run: |
-          echo "Q1 PASS: stored Cloudflare credential successfully read deployment state for emcore-web-pilot."
+          echo "Q1 PASS: dedicated billing-read credential proved zero-cost subscription state and deployment credential read target Worker state."
           echo "No Cloudflare mutation or deployment was attempted."
