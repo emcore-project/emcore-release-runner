@@ -94,7 +94,10 @@ async function openPage(baseUrl) {
   await send('Page.enable'); await send('Runtime.enable');
   const evalJs=async(expression)=>{
     const result=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});
-    if(result.exceptionDetails) throw new Error('Browser expression failed');
+    if(result.exceptionDetails) {
+      const detail=result.exceptionDetails.exception?.description || result.exceptionDetails.text || 'unknown browser exception';
+      throw new Error('Browser expression failed: '+detail);
+    }
     return result.result?.value;
   };
   const close=()=>{try{ws.close()}catch{} try{chrome.kill('SIGTERM')}catch{}};
@@ -146,9 +149,12 @@ async function main() {
     if(!session?.access_token || !session?.refresh_token) throw new Error('AAL2 session missing');
 
     browser=await openPage(baseUrl);
+    const expectedOrigin=new URL(baseUrl).origin;
+    await waitFor(async()=>await browser.evalJs("location.origin==="+JSON.stringify(expectedOrigin)+" && document.readyState !== 'loading'"),20000);
     const ref=new URL(runtime.supabaseUrl).hostname.split('.')[0];
     const storageKey='sb-'+ref+'-auth-token';
-    await browser.evalJs("localStorage.setItem("+JSON.stringify(storageKey)+","+JSON.stringify(JSON.stringify(session))+"); location.reload()");
+    await browser.evalJs("localStorage.setItem("+JSON.stringify(storageKey)+","+JSON.stringify(JSON.stringify(session))+"); true");
+    await browser.send('Page.reload',{ignoreCache:true});
     await waitForPortal(browser);
 
     for(const [profile,width,height,mobile] of [['desktop',1365,900,false],['mobile',390,844,true]]) {

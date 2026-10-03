@@ -10,5 +10,6 @@
   "pilot_base_url": "https://emcore-web-pilot.emcore-project.workers.dev",
   "zero_cost_required": true,
   "document_ingestion_enabled": false,
-  "deployment_authorized": true
+  "deployment_authorized": true,
+  "owner_acceptance_evidence_revision": 2
 }
