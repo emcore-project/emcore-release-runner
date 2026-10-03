@@ -33,8 +33,8 @@ jobs:
           const required = {
             schema: 'emcore.q2-request.v1',
             source_repository: 'emcore-project/emcore',
-            release_commit: '45c7cedd8e69148d608f2a7157f20590c6471830',
-            release_tree: '0b013bc1aac8e7b92dc7a0e46f1bc7270a9af420',
+            release_commit: 'bf615e7427919f0aa5a2238326f30979ddb76079',
+            release_tree: '5f0bb9d1a7212a8ac639a472921df50030490b7a',
             expected_open_pr_count: 0,
             target_worker: 'emcore-web-pilot',
             target_config: 'apps/web/wrangler.pilot.jsonc',
@@ -79,7 +79,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: emcore-project/emcore
-          ref: 45c7cedd8e69148d608f2a7157f20590c6471830
+          ref: bf615e7427919f0aa5a2238326f30979ddb76079
           token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
           path: source
           persist-credentials: false
@@ -92,8 +92,8 @@ jobs:
         run: |
           actual_commit="$(git rev-parse HEAD)"
           actual_tree="$(git rev-parse 'HEAD^{tree}')"
-          test "$actual_commit" = "45c7cedd8e69148d608f2a7157f20590c6471830" || { echo "Commit drift; fail closed."; exit 1; }
-          test "$actual_tree" = "0b013bc1aac8e7b92dc7a0e46f1bc7270a9af420" || { echo "Tree drift; fail closed."; exit 1; }
+          test "$actual_commit" = "bf615e7427919f0aa5a2238326f30979ddb76079" || { echo "Commit drift; fail closed."; exit 1; }
+          test "$actual_tree" = "5f0bb9d1a7212a8ac639a472921df50030490b7a" || { echo "Tree drift; fail closed."; exit 1; }
           echo "Exact accepted source identity verified."
 
       - name: Verify zero open source pull requests
@@ -199,8 +199,8 @@ jobs:
         working-directory: source
         shell: bash
         env:
-          EMCORE_RELEASE_COMMIT: 45c7cedd8e69148d608f2a7157f20590c6471830
-          EMCORE_RELEASE_TREE: 0b013bc1aac8e7b92dc7a0e46f1bc7270a9af420
+          EMCORE_RELEASE_COMMIT: bf615e7427919f0aa5a2238326f30979ddb76079
+          EMCORE_RELEASE_TREE: 5f0bb9d1a7212a8ac639a472921df50030490b7a
           EMCORE_OPEN_RELEASE_PRS: '0'
           EMCORE_C6_ACCEPTED: 'true'
           EMCORE_C7_ACCEPTED: 'true'
@@ -208,8 +208,8 @@ jobs:
           EMCORE_WAVE1_ACCEPTED: 'true'
           EMCORE_WAVE2_ACCEPTED: 'true'
           EMCORE_CURRENT_MAIN_FULL_GATE_ACCEPTED: 'true'
-          EMCORE_CURRENT_MAIN_FULL_GATE_SOURCE_COMMIT: 45c7cedd8e69148d608f2a7157f20590c6471830
-          EMCORE_CURRENT_MAIN_FULL_GATE_RUN_ID: '37127741681'
+          EMCORE_CURRENT_MAIN_FULL_GATE_SOURCE_COMMIT: bf615e7427919f0aa5a2238326f30979ddb76079
+          EMCORE_CURRENT_MAIN_FULL_GATE_RUN_ID: '37131417525'
           EMCORE_ZERO_COST_VERIFIED: 'true'
         run: npm run check:release-predeploy
 
@@ -220,7 +220,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           EMCORE_PILOT_COST_MODE: zero
-          WORKERS_CI_COMMIT_SHA: 45c7cedd8e69148d608f2a7157f20590c6471830
+          WORKERS_CI_COMMIT_SHA: bf615e7427919f0aa5a2238326f30979ddb76079
         run: |
           set +x
           npm run deploy:cloudflare:pilot -- apps/web/wrangler.pilot.jsonc
@@ -274,7 +274,7 @@ jobs:
           });
           if (!response.ok) throw new Error(`deployment-identity HTTP ${response.status}`);
           const body = await response.json();
-          if (body.commitSha !== '45c7cedd8e69148d608f2a7157f20590c6471830') {
+          if (body.commitSha !== 'bf615e7427919f0aa5a2238326f30979ddb76079') {
             throw new Error('live deployment identity mismatch');
           }
           console.log('Live deployment identity matches exact accepted release SHA.');
@@ -287,7 +287,7 @@ jobs:
         env:
           EMCORE_PILOT_BASE_URL: https://emcore-web-pilot.emcore-project.workers.dev
           EMCORE_PILOT_ORGANIZATION_ID: 00605bb8-3899-406e-a428-d7779e856bb2
-          EMCORE_PILOT_EXPECTED_COMMIT: 45c7cedd8e69148d608f2a7157f20590c6471830
+          EMCORE_PILOT_EXPECTED_COMMIT: bf615e7427919f0aa5a2238326f30979ddb76079
         run: npm run test:pilot:live
 
       - name: Capture exact deployed owner acceptance screenshots
@@ -297,8 +297,8 @@ jobs:
         env:
           EMCORE_PILOT_BASE_URL: https://emcore-web-pilot.emcore-project.workers.dev
           EMCORE_PILOT_BOOTSTRAP_URL: https://qogvvvqqkipmstajvhzl.supabase.co/functions/v1/emcore-live-pilot-smoke-bootstrap
-          EMCORE_PILOT_EXPECTED_COMMIT: 45c7cedd8e69148d608f2a7157f20590c6471830
-          EMCORE_PILOT_EXPECTED_TREE: 0b013bc1aac8e7b92dc7a0e46f1bc7270a9af420
+          EMCORE_PILOT_EXPECTED_COMMIT: bf615e7427919f0aa5a2238326f30979ddb76079
+          EMCORE_PILOT_EXPECTED_TREE: 5f0bb9d1a7212a8ac639a472921df50030490b7a
           EMCORE_OWNER_ACCEPTANCE_OUTPUT_DIR: ${{ github.workspace }}/owner-acceptance-screenshots
         run: |
           set -euo pipefail
