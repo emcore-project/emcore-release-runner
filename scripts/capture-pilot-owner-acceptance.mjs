@@ -119,7 +119,28 @@ async function openRoute(browser,route) {
   await browser.evalJs(route==='overview' ? "location.hash=''; window.dispatchEvent(new HashChangeEvent('hashchange'))" : "location.hash='#"+route+"'; window.dispatchEvent(new HashChangeEvent('hashchange'))");
   await new Promise(r=>setTimeout(r,280));
   const overflow=await browser.evalJs("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1");
-  if(overflow) throw new Error('Horizontal document overflow on '+route);
+  if(overflow) {
+    const diagnostic=await browser.evalJs(`(() => {
+      const vw=document.documentElement.clientWidth;
+      return [...document.querySelectorAll('body *')].map((el)=>{
+        const r=el.getBoundingClientRect();
+        return {
+          tag:el.tagName,
+          cls:typeof el.className==='string'?el.className:'',
+          text:(el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,120),
+          left:Math.round(r.left),
+          right:Math.round(r.right),
+          width:Math.round(r.width),
+          scrollWidth:el.scrollWidth,
+          clientWidth:el.clientWidth,
+        };
+      }).filter((x)=>x.right>vw+1 || x.left<-1 || x.scrollWidth>x.clientWidth+1)
+        .sort((a,b)=>Math.max(b.right-vw,b.scrollWidth-b.clientWidth)-Math.max(a.right-vw,a.scrollWidth-a.clientWidth))
+        .slice(0,24);
+    })()`);
+    console.error('OVERFLOW_DIAGNOSTIC '+route+' '+JSON.stringify(diagnostic));
+    throw new Error('Horizontal document overflow on '+route);
+  }
 }
 async function main() {
   const baseUrl=required('EMCORE_PILOT_BASE_URL').replace(/\/$/,'');
