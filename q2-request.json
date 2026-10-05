@@ -1,6 +1,6 @@
 {
   "schema": "emcore.q2-request.v1",
-  "mode": "IDLE",
+  "mode": "DEPLOY",
   "source_repository": "emcore-project/emcore",
   "release_commit": "ed6241c1c38fb3640516c4c90a07ae6cbbba67bc",
   "release_tree": "32109c712d39cb1a873fee0d8a0010cdde0700ab",
@@ -10,6 +10,6 @@
   "pilot_base_url": "https://emcore-web-pilot.emcore-project.workers.dev",
   "zero_cost_required": true,
   "document_ingestion_enabled": false,
-  "deployment_authorized": false,
+  "deployment_authorized": true,
   "owner_acceptance_evidence_revision": 9
 }
