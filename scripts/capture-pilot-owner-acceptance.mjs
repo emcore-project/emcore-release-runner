@@ -5,7 +5,9 @@ import { createClient } from '@supabase/supabase-js';
 
 const PILOT_ORGANIZATION_ID = '00605bb8-3899-406e-a428-d7779e856bb2';
 const OIDC_AUDIENCE = 'emcore-live-pilot-smoke';
-const routes = ['overview','documents','supplies','analysis','actions','markets','practices','deadlines','fiscality'];
+const G03_SYNTHETIC_SUPPLY_ID = '17d6e198-ff7a-4af7-a36e-595120392f02';
+const G03_SIMULATION_HASH = '#simulation?supply=' + G03_SYNTHETIC_SUPPLY_ID;
+const routes = ['overview','documents','supplies','simulation','analysis','actions','markets','practices','deadlines','fiscality'];
 
 function required(name) {
   const value = process.env[name]?.trim();
@@ -116,7 +118,11 @@ async function waitForPortal(browser) {
   if(bad) throw new Error('Owner-rejected copy visible in deployed candidate');
 }
 async function openRoute(browser,route) {
-  await browser.evalJs(route==='overview' ? "location.hash=''; window.dispatchEvent(new HashChangeEvent('hashchange'))" : "location.hash='#"+route+"'; window.dispatchEvent(new HashChangeEvent('hashchange'))");
+  const hash=route==='overview' ? '' : route==='simulation' ? G03_SIMULATION_HASH : '#'+route;
+  await browser.evalJs("location.hash="+JSON.stringify(hash)+"; window.dispatchEvent(new HashChangeEvent('hashchange'))");
+  if(route==='simulation') {
+    await waitFor(async()=>await browser.evalJs("location.hash==="+JSON.stringify(G03_SIMULATION_HASH)+" && Boolean(document.querySelector('[data-g03-workspace]')) && document.body.innerText.includes('Simulazione costi')"),20000);
+  }
   await new Promise(r=>setTimeout(r,280));
   const overflow=await browser.evalJs("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1");
   if(overflow) {
@@ -185,6 +191,9 @@ async function main() {
         await screenshot(browser,outDir+'/'+profile+'-'+route+'.png');
       }
     }
+    await setViewport(browser,800,1280,false);
+    await openRoute(browser,'simulation');
+    await screenshot(browser,outDir+'/tablet-simulation.png');
     const manifest={
       schema:'emcore.owner-acceptance-screenshot-pack.v1',
       generatedAt:new Date().toISOString(),
@@ -195,9 +204,10 @@ async function main() {
       syntheticTestContext:true,
       customerDataUsed:false,
       documentIngestionEnabled:false,
-      viewports:{desktop:'1365x900',mobile:'390x844'},
+      g03SimulationDeepLink:G03_SIMULATION_HASH,
+      viewports:{desktop:'1365x900',mobile:'390x844',tablet:'800x1280'},
       routes,
-      screenshots:routes.flatMap(route=>['desktop-'+route+'.png','mobile-'+route+'.png']),
+      screenshots:[...routes.flatMap(route=>['desktop-'+route+'.png','mobile-'+route+'.png']),'tablet-simulation.png'],
     };
     await writeFile(outDir+'/manifest.json',JSON.stringify(manifest,null,2)+'\n');
     console.log('OWNER_ACCEPTANCE_SCREENSHOT_PACK=PASS');
