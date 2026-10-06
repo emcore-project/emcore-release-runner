@@ -7,6 +7,10 @@ const PILOT_ORGANIZATION_ID = '00605bb8-3899-406e-a428-d7779e856bb2';
 const OIDC_AUDIENCE = 'emcore-live-pilot-smoke';
 const G03_SYNTHETIC_SUPPLY_ID = '17d6e198-ff7a-4af7-a36e-595120392f02';
 const G03_SIMULATION_HASH = '#simulation?supply=' + G03_SYNTHETIC_SUPPLY_ID;
+const G03_INPUT_ENDPOINT_PATH = '/api/g03/organizations/' + PILOT_ORGANIZATION_ID + '/supplies/' + G03_SYNTHETIC_SUPPLY_ID + '/invoice-simulation-inputs';
+const G03_SIMULATION_ENDPOINT_PATH = '/api/g03/organizations/' + PILOT_ORGANIZATION_ID + '/supplies/' + G03_SYNTHETIC_SUPPLY_ID + '/invoice-simulations';
+const G03_SIMULATION_PERIOD_START = '2026-08-01';
+const G03_SIMULATION_PERIOD_END = '2026-08-31';
 const routes = ['overview','documents','supplies','simulation','analysis','actions','markets','practices','deadlines','fiscality'];
 
 function required(name) {
@@ -85,15 +89,31 @@ async function openPage(baseUrl) {
   const ws=new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve,reject)=>{ws.addEventListener('open',resolve,{once:true});ws.addEventListener('error',reject,{once:true})});
   let seq=0; const pending=new Map();
+  const network={requests:new Map(),responses:new Map(),finished:new Set(),failed:new Map()};
   ws.addEventListener('message',event=>{
     const msg=JSON.parse(String(event.data));
+    if(msg.method==='Network.requestWillBeSent') {
+      const request=msg.params?.request;
+      if(request && typeof msg.params?.requestId==='string') {
+        const headers=request.headers && typeof request.headers==='object' ? request.headers : {};
+        const authenticated=Object.entries(headers).some(([key,value])=>key.toLowerCase()==='authorization' && String(value).startsWith('Bearer '));
+        network.requests.set(msg.params.requestId,{method:String(request.method||''),url:String(request.url||''),authenticated});
+      }
+    } else if(msg.method==='Network.responseReceived' && typeof msg.params?.requestId==='string') {
+      const response=msg.params?.response;
+      if(response) network.responses.set(msg.params.requestId,{status:Number(response.status),url:String(response.url||'')});
+    } else if(msg.method==='Network.loadingFinished' && typeof msg.params?.requestId==='string') {
+      network.finished.add(msg.params.requestId);
+    } else if(msg.method==='Network.loadingFailed' && typeof msg.params?.requestId==='string') {
+      network.failed.set(msg.params.requestId,String(msg.params?.errorText||'network failure'));
+    }
     if(!msg.id) return;
     const p=pending.get(msg.id); if(!p) return;
     pending.delete(msg.id);
     if(msg.error) p.reject(new Error(msg.error.message)); else p.resolve(msg.result);
   });
   const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}))});
-  await send('Page.enable'); await send('Runtime.enable');
+  await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
   const evalJs=async(expression)=>{
     const result=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});
     if(result.exceptionDetails) {
@@ -103,7 +123,77 @@ async function openPage(baseUrl) {
     return result.result?.value;
   };
   const close=()=>{try{ws.close()}catch{} try{chrome.kill('SIGTERM')}catch{}};
-  return {send,evalJs,close};
+  return {send,evalJs,close,network};
+}
+function networkPathname(value) {
+  try { return new URL(value).pathname; } catch { return ''; }
+}
+async function waitForG03EndpointProof(browser,method,pathname,timeout=20000) {
+  const started=Date.now();
+  while(Date.now()-started<timeout) {
+    const match=[...browser.network.requests.entries()].find(([,request])=>request.method===method && networkPathname(request.url)===pathname);
+    if(match) {
+      const [requestId,request]=match;
+      const failed=browser.network.failed.get(requestId);
+      if(failed) throw new Error('G03 '+method+' '+pathname+' network failure: '+failed);
+      const response=browser.network.responses.get(requestId);
+      if(response && browser.network.finished.has(requestId)) {
+        if(!request.authenticated) throw new Error('G03 '+method+' '+pathname+' did not carry authenticated browser authority');
+        if(!Number.isInteger(response.status) || response.status<200 || response.status>=300) throw new Error('G03 '+method+' '+pathname+' failed: HTTP '+response.status);
+        const responseBody=await browser.send('Network.getResponseBody',{requestId});
+        const raw=responseBody.base64Encoded ? Buffer.from(responseBody.body,'base64').toString('utf8') : responseBody.body;
+        let payload;
+        try { payload=JSON.parse(raw); } catch { throw new Error('G03 '+method+' '+pathname+' returned non-JSON evidence'); }
+        if(payload?.organizationId!==PILOT_ORGANIZATION_ID || payload?.supplyId!==G03_SYNTHETIC_SUPPLY_ID) throw new Error('G03 '+method+' '+pathname+' response identity mismatch');
+        return {method,pathname,status:response.status,pass:true,responseIdentityVerified:true,authenticated:true};
+      }
+    }
+    await new Promise(r=>setTimeout(r,120));
+  }
+  throw new Error('Timed out waiting for authenticated G03 '+method+' '+pathname);
+}
+async function setBrowserInput(browser,selector,value) {
+  await browser.evalJs(`(() => {
+    const input=document.querySelector(${JSON.stringify(selector)});
+    if(!(input instanceof HTMLInputElement)) throw new Error('Missing G03 input');
+    const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+    setter.call(input,${JSON.stringify(value)});
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+    input.dispatchEvent(new Event('change',{bubbles:true}));
+    return true;
+  })()`);
+}
+async function clickBrowserButtonByText(browser,selector,text) {
+  await browser.evalJs(`(() => {
+    const button=[...document.querySelectorAll(${JSON.stringify(selector)})].find((item)=>item.textContent?.replace(/\\s+/g,' ').trim()===${JSON.stringify(text)});
+    if(!(button instanceof HTMLButtonElement)) throw new Error('Missing G03 action');
+    if(button.disabled) throw new Error('Disabled G03 action');
+    button.click();
+    return true;
+  })()`);
+}
+async function performG03LiveEndpointAcceptance(browser) {
+  await openRoute(browser,'simulation');
+  const exactContext=await browser.evalJs(`location.hash===${JSON.stringify(G03_SIMULATION_HASH)} && document.querySelector('.g03-context-grid select')?.value===${JSON.stringify(G03_SYNTHETIC_SUPPLY_ID)}`);
+  if(!exactContext) throw new Error('G03 synthetic organization/supply navigation context mismatch');
+  await setBrowserInput(browser,'.g03-context-grid label:nth-child(2) input',G03_SIMULATION_PERIOD_START);
+  await setBrowserInput(browser,'.g03-context-grid label:nth-child(3) input',G03_SIMULATION_PERIOD_END);
+  await clickBrowserButtonByText(browser,'.g03-context-grid button','Carica dati canonici');
+  const canonicalInputGet=await waitForG03EndpointProof(browser,'GET',G03_INPUT_ENDPOINT_PATH);
+  await waitFor(async()=>await browser.evalJs("Boolean(document.querySelector('.g03-canonical')) && document.body.innerText.includes('Dati canonici')"),20000);
+  await clickBrowserButtonByText(browser,'.g03-scenario-actions button','Calcola scenario A');
+  const simulationPost=await waitForG03EndpointProof(browser,'POST',G03_SIMULATION_ENDPOINT_PATH);
+  await waitFor(async()=>await browser.evalJs("Boolean(document.querySelector('.g03-results')) && document.body.innerText.includes('Risultati scenario')"),20000);
+  return {
+    organizationId:PILOT_ORGANIZATION_ID,
+    supplyId:G03_SYNTHETIC_SUPPLY_ID,
+    authenticatedSyntheticAal2Context:true,
+    customerDataUsed:false,
+    documentIngestionEnabled:false,
+    simulationPersistenceUsed:false,
+    canonicalInputGet,
+    simulationPost,
+  };
 }
 async function setViewport(browser,width,height,mobile) {
   await browser.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile,screenWidth:width,screenHeight:height});
@@ -183,6 +273,7 @@ async function main() {
     await browser.evalJs("localStorage.setItem("+JSON.stringify(storageKey)+","+JSON.stringify(JSON.stringify(session))+"); true");
     await browser.send('Page.reload',{ignoreCache:true});
     await waitForPortal(browser);
+    const g03LiveEndpointAcceptance=await performG03LiveEndpointAcceptance(browser);
 
     for(const [profile,width,height,mobile] of [['desktop',1365,900,false],['mobile',390,844,true]]) {
       await setViewport(browser,width,height,mobile);
@@ -205,11 +296,13 @@ async function main() {
       customerDataUsed:false,
       documentIngestionEnabled:false,
       g03SimulationDeepLink:G03_SIMULATION_HASH,
+      g03LiveEndpointAcceptance,
       viewports:{desktop:'1365x900',mobile:'390x844',tablet:'800x1280'},
       routes,
       screenshots:[...routes.flatMap(route=>['desktop-'+route+'.png','mobile-'+route+'.png']),'tablet-simulation.png'],
     };
     await writeFile(outDir+'/manifest.json',JSON.stringify(manifest,null,2)+'\n');
+    console.log('G03_LIVE_ENDPOINT_ACCEPTANCE=PASS GET='+g03LiveEndpointAcceptance.canonicalInputGet.status+' POST='+g03LiveEndpointAcceptance.simulationPost.status);
     console.log('OWNER_ACCEPTANCE_SCREENSHOT_PACK=PASS');
   } finally {
     browser?.close();
