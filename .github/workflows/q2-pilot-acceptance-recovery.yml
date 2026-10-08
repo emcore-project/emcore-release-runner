@@ -1,0 +1,295 @@
+name: EMCORE PILOT Acceptance-Only Recovery
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/q2-pilot-acceptance-recovery.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: emcore-pilot-acceptance-recovery-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  self-validation:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout PR head without persisted credentials
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Validate exact PR and executor contract
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const cp = require('node:child_process');
+          const path = '.github/workflows/q2-pilot-acceptance-recovery.yml';
+          const text = fs.readFileSync(path, 'utf8');
+          const must = (ok, reason) => { if (!ok) throw new Error('Self-validation fail closed: ' + reason); };
+          must(process.env.BASE_BRANCH === 'main', 'base branch');
+          must(process.env.REPO === 'emcore-project/emcore-release-runner', 'repository');
+          must(cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim() === process.env.HEAD_SHA, 'PR head');
+          const changed = JSON.parse(cp.execFileSync('gh',['api', 'repos/'+process.env.REPO+'/pulls/'+process.env.PR_NUMBER+'/files', '--paginate', '--slurp'],{encoding:'utf8',env:process.env})).flat();
+          must(changed.length === 1 && changed[0].filename === path && changed[0].status === 'added', 'exactly one added workflow file');
+          const uniqueSlice = (marker, reason) => {
+            const first = text.indexOf(marker);
+            must(first >= 0 && text.indexOf(marker, first + marker.length) < 0, reason);
+            return first;
+          };
+          const jobsIndex = uniqueSlice('\njobs:\n', 'unique top-level jobs');
+          const headerText = text.slice(0, jobsIndex);
+          const headerIndex = (marker, reason) => {
+            const first = headerText.indexOf(marker);
+            must(first >= 0 && headerText.indexOf(marker, first + marker.length) < 0, reason);
+            return first;
+          };
+          const onMarker = '\non:\n';
+          const permissionsMarker = '\npermissions:\n';
+          const concurrencyMarker = '\nconcurrency:\n';
+          const onIndex = headerIndex(onMarker, 'unique triggers');
+          const permissionsIndex = headerIndex(permissionsMarker, 'unique permissions');
+          const concurrencyIndex = headerIndex(concurrencyMarker, 'unique concurrency');
+          must(onIndex < permissionsIndex && permissionsIndex < concurrencyIndex && concurrencyIndex < jobsIndex, 'header ordering');
+          const onText = headerText.slice(onIndex + onMarker.length, permissionsIndex);
+          const triggerIds = [...onText.matchAll(/^  ([A-Za-z0-9_-]+):\s*$/gm)].map(m => m[1]);
+          must(JSON.stringify(triggerIds) === JSON.stringify(['issue_comment','pull_request']), 'exact trigger set');
+          must(/^    types: \[created\]\s*$/m.test(onText), 'exact issue comment type');
+          must(/^    branches: \[main\]\s*$/m.test(onText), 'exact PR base branches');
+          must(/^    paths:\s*\n      - \.github\/workflows\/q2-pilot-acceptance-recovery\.yml\s*$/m.test(onText), 'exact PR path');
+          const permissionsText = headerText.slice(permissionsIndex + permissionsMarker.length, concurrencyIndex);
+          const permissionEntries = [...permissionsText.matchAll(/^  ([A-Za-z0-9_-]+):\s*([A-Za-z]+)\s*$/gm)].map(m => [m[1],m[2]]);
+          must(JSON.stringify(permissionEntries) === JSON.stringify([['contents','read'],['id-token','write']]), 'exact permissions');
+          must(permissionsText.trim().split('\n').filter(Boolean).length === 2, 'no extra permissions');
+          const jobsText = text.slice(jobsIndex + '\njobs:\n'.length);
+          const jobIds = [...jobsText.matchAll(/^  ([A-Za-z0-9_-]+):\s*$/gm)].map(m => m[1]);
+          must(JSON.stringify(jobIds) === JSON.stringify(['self-validation','live-acceptance']), 'exact job set');
+          const liveMarker = '\n  live-acceptance:\n';
+          const liveIndex = uniqueSlice(liveMarker, 'unique live acceptance block');
+          must(liveIndex > jobsIndex, 'live acceptance after jobs');
+          const liveText = text.slice(liveIndex);
+          const required = [
+            'name: EMCORE PILOT Acceptance-Only Recovery',
+            "github.event.issue.number == 16",
+            "github.event.comment.user.login == github.repository_owner",
+            'RUN_PILOT_ACCEPTANCE_RECOVERY',
+            'source_repository=emcore-project/emcore',
+            'acceptance_profile=LIVE_PILOT_OWNER_G03_V1',
+            'actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8',
+            'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',
+            'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02',
+            'persist-credentials: false',
+            'LIVE_DEPLOYMENT_IDENTITY_EXACT=PASS',
+            'PILOT_ACCEPTANCE_RECOVERY=PASS'
+          ];
+          for (const marker of required) must(text.includes(marker), 'missing contract '+marker);
+          const forbidden = [
+            /q2-request\.json/i, /wrangler\s+deploy/i,
+            /deploy:cloudflare/i, /CLOUDFLARE_[A-Z_]*TOKEN/i,
+            /api\.cloudflare\.com/i, /api\/deployments/i,
+            /SUPABASE_SERVICE_ROLE_KEY/i, /SUPABASE_SECRET_KEY/i,
+            /service_role/i, /apply_migration/i, /supabase\s+db/i,
+            /\b(?:create|alter|drop)\s+(?:table|policy|role|function)\b/i,
+            /\b(?:grant|revoke)\s+/i, /git\s+push/i, /gh\s+pr\s+merge/i,
+            /gh\s+api\s+--method\s+(?:POST|PUT|PATCH|DELETE)/i
+          ];
+          for (const pattern of forbidden) must(!pattern.test(liveText), 'prohibited live-execution pattern '+pattern);
+          must(text.includes("if: github.event_name == 'pull_request'"), 'PR validation event gate');
+          must(liveText.includes("github.event_name == 'issue_comment'"), 'issue-only execution gate');
+          must(liveText.includes("github.event.comment.user.login == github.repository_owner"), 'owner-only gate');
+          console.log('ACCEPTANCE_RECOVERY_EXECUTOR_SELF_VALIDATION=PASS');
+          NODE
+
+  live-acceptance:
+    if: github.event_name == 'issue_comment' && github.event.issue.number == 16 && github.event.comment.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout governed COMPANION main
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Record clean executor identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)" || exit 1
+          echo "Executor SHA: $(git rev-parse HEAD)"
+          echo "Executor tree: $(git rev-parse 'HEAD^{tree}')"
+      - name: Parse exact owner-only acceptance request
+        id: request
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const fail = reason => {throw new Error('Invalid acceptance request: '+reason)};
+          const lines = (process.env.COMMENT_BODY || '').replace(/\r\n/g,'\n').trim().split('\n');
+          if(lines.length !== 8 || lines.some(line => !line.trim() || line !== line.trim())) fail('line count/spacing');
+          if(lines[0] !== 'RUN_PILOT_ACCEPTANCE_RECOVERY') fail('marker');
+          const keys = ['source_repository','source_sha','source_tree','pilot_base_url','owner_acceptance_revision','acceptance_profile','mission_reference'];
+          const fields = {};
+          for(let i=0;i<keys.length;i++){
+            const prefix=keys[i]+'=';
+            if(!lines[i+1].startsWith(prefix)) fail('field order/unknown/duplicate');
+            fields[keys[i]]=lines[i+1].slice(prefix.length);
+          }
+          const fixed = {
+            source_repository:'emcore-project/emcore',
+            source_sha:'4b66269dea0f1cba973038e24a64ecd813ac2281',
+            source_tree:'59759d15454c160946c161e1978290cb49235d25',
+            pilot_base_url:'https://emcore-web-pilot.emcore-project.workers.dev',
+            owner_acceptance_revision:'11',
+            acceptance_profile:'LIVE_PILOT_OWNER_G03_V1'
+          };
+          for(const [key,value] of Object.entries(fixed)) if(fields[key] !== value) fail(key);
+          if(!/^[0-9a-f]{40}$/.test(fields.source_sha) || !/^[0-9a-f]{40}$/.test(fields.source_tree)) fail('immutable SHA syntax');
+          if(!/^CC[0-9]{2,4}-[A-Z0-9]+(?:-[A-Z0-9]+)*-V[0-9]+-[0-9]{3}$/.test(fields.mission_reference)) fail('bounded mission reference');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(fields).map(([k,v])=>k+'='+v+'\n').join(''));
+          NODE
+      - name: Require exact private source token
+        env:
+          EMCORE_SOURCE_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        run: test -n "$EMCORE_SOURCE_TOKEN"
+      - name: Checkout exact immutable PRODUCT source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore
+          ref: ${{ steps.request.outputs.source_sha }}
+          token: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact clean PRODUCT SHA and tree
+        working-directory: source
+        env:
+          EXPECTED_SHA: ${{ steps.request.outputs.source_sha }}
+          EXPECTED_TREE: ${{ steps.request.outputs.source_tree }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain)"
+      - name: Require zero open PRODUCT PRs
+        env:
+          GH_TOKEN: ${{ secrets.EMCORE_SOURCE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(gh api 'repos/emcore-project/emcore/pulls?state=open&per_page=100' --jq 'length')"
+          test "$count" = 0
+      - name: Install exact Node runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - name: Install exact PRODUCT dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify exact PILOT runtime before synthetic setup
+        env:
+          BASE_URL: ${{ steps.request.outputs.pilot_base_url }}
+        run: |
+          node <<'NODE'
+          (async()=>{
+            const response=await fetch(process.env.BASE_URL+'/api/runtime-config',{headers:{accept:'application/json'}});
+            if(!response.ok) throw new Error('runtime HTTP '+response.status);
+            const r=await response.json();
+            const exact={applicationSurfaceMode:'PILOT',authMode:'magic_link_mfa',documentIngestionEnabled:false,allowedOrganizationId:'00605bb8-3899-406e-a428-d7779e856bb2',supabaseUrl:'https://qogvvvqqkipmstajvhzl.supabase.co'};
+            for(const [k,v] of Object.entries(exact)) if(r[k]!==v) throw new Error('runtime mismatch: '+k);
+            console.log('LIVE_RUNTIME_CONFIG_EXACT=PASS');
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
+      - name: Bounded propagation-tolerant exact SHA identity
+        env:
+          BASE_URL: ${{ steps.request.outputs.pilot_base_url }}
+          EXPECTED_SHA: ${{ steps.request.outputs.source_sha }}
+        run: |
+          node <<'NODE'
+          (async()=>{
+            const expected=process.env.EXPECTED_SHA;
+            if(!/^[0-9a-f]{40}$/.test(expected)) throw new Error('expected SHA syntax');
+            for(let attempt=1; attempt<=12; attempt++){
+              let status='UNKNOWN';
+              try {
+                const response=await fetch(process.env.BASE_URL+'/api/deployment-identity',{headers:{accept:'application/json'},signal:AbortSignal.timeout(3500)});
+                if(!response.ok) status='HTTP_ERROR';
+                else {
+                  const json=await response.json();
+                  status=typeof json?.commitSha==='string' && /^[0-9a-f]{40}$/.test(json.commitSha)
+                    ? (json.commitSha===expected ? 'EXACT_MATCH' : 'SHA_MISMATCH') : 'INVALID_IDENTITY';
+                }
+              } catch {status='NETWORK_OR_JSON_ERROR'}
+              console.log('Identity attempt '+attempt+'/12: '+status);
+              if(status==='EXACT_MATCH'){console.log('LIVE_DEPLOYMENT_IDENTITY_EXACT=PASS');return;}
+              if(attempt<12) await new Promise(resolve=>setTimeout(resolve,5000));
+            }
+            throw new Error('Exact SHA identity not observed in finite 55-second retry wait budget');
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
+      - name: Canonical public PILOT smoke
+        working-directory: source
+        env:
+          EMCORE_PILOT_BASE_URL: ${{ steps.request.outputs.pilot_base_url }}
+          EMCORE_PILOT_ORGANIZATION_ID: 00605bb8-3899-406e-a428-d7779e856bb2
+          EMCORE_PILOT_EXPECTED_COMMIT: ${{ steps.request.outputs.source_sha }}
+        run: npm run test:pilot:live
+      - name: Use unchanged existing owner acceptance script
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp scripts/capture-pilot-owner-acceptance.mjs source/scripts/capture-pilot-owner-acceptance.mjs
+          cmp scripts/capture-pilot-owner-acceptance.mjs source/scripts/capture-pilot-owner-acceptance.mjs
+      - name: Existing synthetic AAL2 G03 GET POST and screenshots
+        working-directory: source
+        env:
+          EMCORE_PILOT_BASE_URL: ${{ steps.request.outputs.pilot_base_url }}
+          EMCORE_PILOT_BOOTSTRAP_URL: https://qogvvvqqkipmstajvhzl.supabase.co/functions/v1/emcore-live-pilot-smoke-bootstrap
+          EMCORE_PILOT_EXPECTED_COMMIT: ${{ steps.request.outputs.source_sha }}
+          EMCORE_PILOT_EXPECTED_TREE: ${{ steps.request.outputs.source_tree }}
+          EMCORE_OWNER_ACCEPTANCE_OUTPUT_DIR: ${{ runner.temp }}/emcore-owner-acceptance
+        run: node scripts/capture-pilot-owner-acceptance.mjs
+      - name: Require acceptance manifest and screenshots
+        shell: bash
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/emcore-owner-acceptance
+        run: |
+          set -euo pipefail
+          test -s "$ARTIFACT_DIR/manifest.json"
+          node -e 'const fs=require("fs");const p=process.env.ARTIFACT_DIR;const m=JSON.parse(fs.readFileSync(p+"/manifest.json"));if(!Array.isArray(m.screenshots)||!m.screenshots.length||m.screenshots.some(x=>!fs.statSync(p+"/"+x).size)||m.g03LiveEndpointAcceptance?.canonicalInputGet?.pass!==true||m.g03LiveEndpointAcceptance?.simulationPost?.pass!==true)process.exit(1);'
+      - name: Upload owner acceptance screenshot pack
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: emcore-pilot-acceptance-recovery
+          path: ${{ runner.temp }}/emcore-owner-acceptance/
+          retention-days: 30
+          if-no-files-found: error
+      - name: Acceptance-only terminal
+        run: |
+          echo PILOT_ACCEPTANCE_RECOVERY=PASS
+          echo NO_DEPLOYMENT=PASS
+          echo NO_CLOUDFLARE_MUTATION=PASS
+          echo NO_Q2_MUTATION=PASS
+          echo NO_PRODUCT_MUTATION=PASS
+          echo NO_REAL_CUSTOMER_DATA=PASS
+          echo DOCUMENT_INGESTION_OFF=PASS
