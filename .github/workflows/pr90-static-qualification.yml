@@ -1,0 +1,259 @@
+name: EMCORE PR90 Isolated Static Qualification (CC194)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+    paths:
+      - .github/workflows/pr90-static-qualification.yml
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-pr90-static:
+    if: >-
+      github.repository == 'emcore-project/emcore-release-runner' &&
+      github.event.pull_request.head.repo.full_name == 'emcore-project/emcore-release-runner' &&
+      github.event.pull_request.head.ref == 'cc194-pr90-static-qualification-executor-v1' &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Install exact Node 22.16.0 (no dependencies)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+
+      - name: Revalidate PR90 and this workflow PR via read-only GitHub API
+        shell: bash
+        env:
+          GH_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+
+          const repo = 'emcore-project/emcore-release-runner';
+          const base = '8110f2c33932b95e19a6b2423181d7361730873f';
+          const head = '8db4ff9e10fc923070aa47b2927bbdf460c72214';
+          const file = 'scripts/capture-pilot-owner-acceptance.mjs';
+          const blob = '23467b3dc747e9f6bb6c6d32c3f7983cdd04260d';
+          const workflow = '.github/workflows/pr90-static-qualification.yml';
+          const branch = 'cc194-pr90-static-qualification-executor-v1';
+          const token = process.env.GH_READ_TOKEN;
+          assert.ok(typeof token === 'string' && token.length > 0, 'GitHub read-only token missing');
+          const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+          assert.ok(['opened', 'synchronize', 'reopened'].includes(event.action), 'event type');
+          assert.equal(event.repository?.full_name, repo, 'event repository');
+          assert.equal(event.pull_request?.head?.repo?.full_name, repo, 'workflow PR head repository');
+          assert.equal(event.pull_request?.head?.ref, branch, 'workflow PR head branch');
+          assert.equal(event.pull_request?.base?.ref, 'main', 'workflow PR base branch');
+          const ownNumber = event.pull_request?.number;
+          assert.ok(Number.isInteger(ownNumber) && ownNumber > 90, 'workflow PR identity');
+
+          async function get(path) {
+            const response = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
+              method: 'GET',
+              headers: {
+                authorization: `Bearer ${token}`,
+                accept: 'application/vnd.github+json',
+                'x-github-api-version': '2022-11-28',
+              },
+              signal: AbortSignal.timeout(12000),
+            });
+            if (!response.ok) throw new Error(`GitHub read-only API ${path}: HTTP ${response.status}`);
+            return response.json();
+          }
+          const [mainRef, pr90, files90, commits90, ownPr, ownFiles, ownCommits] = await Promise.all([
+            get('git/ref/heads/main'),
+            get('pulls/90'),
+            get('pulls/90/files?per_page=100'),
+            get('pulls/90/commits?per_page=100'),
+            get(`pulls/${ownNumber}`),
+            get(`pulls/${ownNumber}/files?per_page=100`),
+            get(`pulls/${ownNumber}/commits?per_page=100`),
+          ]);
+          assert.equal(mainRef.ref, 'refs/heads/main', 'COMPANION main ref');
+          assert.equal(mainRef.object?.sha, base, 'COMPANION main SHA unchanged');
+          assert.equal(pr90.state, 'open', 'PR90 OPEN');
+          assert.equal(pr90.merged_at, null, 'PR90 unmerged');
+          assert.equal(pr90.draft, false, 'PR90 non-draft');
+          assert.equal(pr90.mergeable, true, 'PR90 mergeable');
+          assert.equal(pr90.base?.repo?.full_name, repo, 'PR90 base repo');
+          assert.equal(pr90.head?.repo?.full_name, repo, 'PR90 head repo');
+          assert.equal(pr90.base?.ref, 'main', 'PR90 base branch');
+          assert.equal(pr90.base?.sha, base, 'PR90 base SHA');
+          assert.equal(pr90.head?.sha, head, 'PR90 head SHA');
+          assert.equal(pr90.commits, 1, 'PR90 one commit');
+          assert.equal(pr90.changed_files, 1, 'PR90 one file');
+          assert.equal(files90.length, 1, 'PR90 files enumerated');
+          assert.equal(files90[0].filename, file, 'PR90 exact script path');
+          assert.equal(files90[0].status, 'modified', 'PR90 file modified only');
+          assert.equal(files90[0].sha, blob, 'PR90 head blob');
+          assert.equal(commits90.length, 1, 'PR90 commits enumerated');
+          assert.equal(commits90[0].sha, head, 'PR90 exact commit');
+          assert.equal(ownPr.state, 'open', 'workflow PR open');
+          assert.equal(ownPr.merged_at, null, 'workflow PR unmerged');
+          assert.equal(ownPr.base?.ref, 'main', 'workflow PR base');
+          assert.equal(ownPr.base?.sha, base, 'workflow PR exact base');
+          assert.equal(ownPr.head?.ref, branch, 'workflow PR exact branch');
+          assert.equal(ownPr.head?.sha, event.pull_request.head.sha, 'workflow PR event/head identity');
+          assert.equal(ownPr.changed_files, 1, 'workflow PR one file');
+          assert.equal(ownPr.commits, 1, 'workflow PR one commit');
+          assert.equal(ownFiles.length, 1, 'workflow PR file list');
+          assert.equal(ownFiles[0].filename, workflow, 'workflow PR path');
+          assert.equal(ownFiles[0].status, 'added', 'workflow new file only');
+          assert.equal(ownCommits.length, 1, 'workflow PR commit list');
+          assert.equal(ownCommits[0].sha, ownPr.head.sha, 'workflow PR single head commit');
+          console.log('PR90_API_ANTI_DRIFT=PASS; WORKFLOW_PR_ONE_FILE_ONE_COMMIT=PASS');
+          NODE
+
+      - name: Checkout exact PR90 base into independent directory
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore-release-runner
+          ref: 8110f2c33932b95e19a6b2423181d7361730873f
+          path: pr90-base
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Checkout exact PR90 head into independent directory
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          repository: emcore-project/emcore-release-runner
+          ref: 8db4ff9e10fc923070aa47b2927bbdf460c72214
+          path: pr90-head
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Execute exact Node and Git CLI qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=8110f2c33932b95e19a6b2423181d7361730873f
+          head=8db4ff9e10fc923070aa47b2927bbdf460c72214
+          file=scripts/capture-pilot-owner-acceptance.mjs
+          test "$(git -C pr90-base rev-parse HEAD)" = "$base"
+          test "$(git -C pr90-base rev-parse 'HEAD^{tree}')" = 09ac6f13550c6233512c2e5fa4dbdf5cb1935a96
+          test "$(git -C pr90-head rev-parse HEAD)" = "$head"
+          test "$(git -C pr90-head rev-parse 'HEAD^{tree}')" = b6f7347ce8c66d4df2f99c7b950679584190db88
+          test "$(git -C pr90-head rev-parse 'HEAD^')" = "$base"
+          test "$(git -C pr90-head rev-list --count "$base..$head")" = 1
+          test "$(git -C pr90-base hash-object "$file")" = ab800cfc3bd5da387f1d804da3dfbe9550105b91
+          test "$(git -C pr90-head hash-object "$file")" = 23467b3dc747e9f6bb6c6d32c3f7983cdd04260d
+          test "$(git -C pr90-head diff --name-status "$base" "$head" --)" = $'M\tscripts/capture-pilot-owner-acceptance.mjs'
+          echo 'GIT_IDENTITY_SCOPE_ANCESTRY_BLOBS=PASS'
+          echo 'CLI=node --check scripts/capture-pilot-owner-acceptance.mjs'
+          set +e
+          (cd pr90-head && node --check scripts/capture-pilot-owner-acceptance.mjs)
+          node_exit=$?
+          set -e
+          echo "NODE_CHECK_EXIT=$node_exit"
+          test "$node_exit" -eq 0
+          echo "CLI=git diff --check $base $head --"
+          set +e
+          (cd pr90-head && git diff --check "$base" "$head" --)
+          diff_exit=$?
+          set -e
+          echo "GIT_DIFF_CHECK_EXIT=$diff_exit"
+          test "$diff_exit" -eq 0
+
+      - name: Prove unchanged main tail and acceptance/security contract (static only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+
+          const path = 'scripts/capture-pilot-owner-acceptance.mjs';
+          const base = readFileSync(`pr90-base/${path}`);
+          const head = readFileSync(`pr90-head/${path}`);
+          const marker = Buffer.from('async function main()');
+          const a = base.indexOf(marker);
+          const b = head.indexOf(marker);
+          assert.ok(a >= 0 && b >= 0, 'main() marker exists in both scripts');
+          assert.equal(base.indexOf(marker, a + marker.length), -1, 'one base main() marker');
+          assert.equal(head.indexOf(marker, b + marker.length), -1, 'one head main() marker');
+          assert.ok(base.subarray(a).equals(head.subarray(b)), 'main() through EOF byte-identical');
+          console.log(`MAIN_TO_EOF_BYTE_IDENTITY=PASS; bytes=${head.length - b}`);
+
+          const text = head.toString('utf8');
+          const must = (fragment, name) => assert.ok(text.includes(fragment), `${name} missing`);
+          const section = (start, end) => {
+            const i = text.indexOf(start);
+            assert.ok(i >= 0, `section start ${start}`);
+            const j = text.indexOf(end, i + start.length);
+            assert.ok(j > i, `section end ${end}`);
+            return text.slice(i, j);
+          };
+          const required = [
+            ["const PILOT_ORGANIZATION_ID = '00605bb8-3899-406e-a428-d7779e856bb2';", 'exact organization'],
+            ["const G03_SYNTHETIC_SUPPLY_ID = '17d6e198-ff7a-4af7-a36e-595120392f02';", 'exact supply'],
+            ["const G03_SIMULATION_HASH = '#simulation?supply=' + G03_SYNTHETIC_SUPPLY_ID;", 'deep-link supply'],
+            ["const G03_INPUT_ENDPOINT_PATH = '/api/g03/organizations/' + PILOT_ORGANIZATION_ID + '/supplies/' + G03_SYNTHETIC_SUPPLY_ID + '/invoice-simulation-inputs';", 'GET endpoint'],
+            ["const G03_SIMULATION_ENDPOINT_PATH = '/api/g03/organizations/' + PILOT_ORGANIZATION_ID + '/supplies/' + G03_SYNTHETIC_SUPPLY_ID + '/invoice-simulations';", 'POST endpoint'],
+            ["const G03_SIMULATION_PERIOD_START = '2026-08-01';", 'period start'],
+            ["const G03_SIMULATION_PERIOD_END = '2026-08-31';", 'period end'],
+            ["body.authMode!=='magic_link_mfa'", 'MFA runtime gate'],
+            ["body.applicationSurfaceMode!=='PILOT'", 'PILOT-only runtime gate'],
+            ["body.documentIngestionEnabled!==false", 'ingestion frozen'],
+            ["body.allowedOrganizationId!==PILOT_ORGANIZATION_ID", 'tenant boundary'],
+            ["Network.requestWillBeSentExtraInfo", 'CDP extra-info event'],
+            ["network.requestExtraInfo.set(msg.params.requestId,authorizationPresent)", 'CDP extra-info/requestId correlation'],
+            ["browser.network.requestExtraInfo.get(requestId)===true", 'CDP correlated authority boolean'],
+            ["response.status<200 || response.status>=300", '2xx request proof'],
+            ["payload?.organizationId!==PILOT_ORGANIZATION_ID || payload?.supplyId!==G03_SYNTHETIC_SUPPLY_ID", 'response identity'],
+            ["G03 NETWORK_FAILURE", 'bounded network failure reason'],
+            ["G03 UI_VALIDATION_BLOCK", 'bounded UI validation reason'],
+            ["G03 NETWORK_NOT_OBSERVED_TIMEOUT", 'bounded missing request timeout'],
+            ["customerDataUsed:false", 'synthetic only'],
+            ["documentIngestionEnabled:false", 'ingestion off evidence'],
+            ["simulationPersistenceUsed:false", 'no simulation persistence'],
+            ["authenticatedSyntheticAal2Context:true", 'authenticated AAL2 proof'],
+            ["schema:'emcore.owner-acceptance-screenshot-pack.v1'", 'screenshot manifest'],
+            ["await screenshot(browser,outDir+'/tablet-simulation.png');", 'tablet screenshot'],
+            ["if(synthetic?.userId) await bootstrap(bootstrapUrl,oidc,'cleanup',synthetic.userId);", 'mandatory cleanup'],
+            ["auth.mfa.verify", 'AAL2 MFA verification'],
+            ["if(!session?.access_token || !session?.refresh_token) throw new Error('AAL2 session missing');", 'AAL2 session enforcement'],
+          ];
+          for (const [fragment, label] of required) must(fragment, label);
+
+          const perform = section('async function performG03LiveEndpointAcceptance(browser) {', 'async function setViewport(');
+          const sequence = [
+            "await setBrowserInput(browser,'.g03-context-grid label:nth-child(2) input',G03_SIMULATION_PERIOD_START);",
+            "await setBrowserInput(browser,'.g03-context-grid label:nth-child(3) input',G03_SIMULATION_PERIOD_END);",
+            'await settleControlledInputs(browser);',
+            'await assertG03PreClickInvariants(browser);',
+            "await clickBrowserButtonByText(browser,'.g03-context-grid button','Carica dati canonici');",
+            "await waitForG03EndpointProof(browser,'GET',G03_INPUT_ENDPOINT_PATH);",
+            "await clickBrowserButtonByText(browser,'.g03-scenario-actions button','Calcola scenario A');",
+            "await waitForG03EndpointProof(browser,'POST',G03_SIMULATION_ENDPOINT_PATH);",
+          ];
+          let cursor = -1;
+          for (const fragment of sequence) {
+            const next = perform.indexOf(fragment, cursor + 1);
+            assert.ok(next > cursor, `G03 browser-driven order: ${fragment}`);
+            cursor = next;
+          }
+          assert.ok(!/\bfetch\s*\(/.test(perform), 'no direct G03 API-only bypass');
+          const settlement = section('async function settleControlledInputs(browser) {', 'async function assertG03PreClickInvariants(');
+          assert.ok(settlement.includes('requestAnimationFrame(()=>requestAnimationFrame(resolve))'), 'double frame settlement');
+          const preClick = section('async function assertG03PreClickInvariants(browser) {', 'async function waitForG03EndpointProof(');
+          for (const field of ['snapshot.hash===G03_SIMULATION_HASH', 'snapshot.supplyId===G03_SYNTHETIC_SUPPLY_ID', 'snapshot.periodStart===G03_SIMULATION_PERIOD_START', 'snapshot.periodEnd===G03_SIMULATION_PERIOD_END', 'snapshot.loadButtonDisabled===false']) {
+            assert.ok(preClick.includes(field), `pre-click invariant ${field}`);
+          }
+          const diagnostics = section('async function safeG03UiSnapshot(browser) {', 'async function settleControlledInputs(browser) {');
+          assert.ok(diagnostics.includes('message.slice(0,240)'), 'bounded UI diagnostic');
+          assert.ok(diagnostics.includes('.slice(-12)'), 'bounded network diagnostic');
+          assert.ok(diagnostics.includes('authorizationPresent:'), 'boolean-only authorization evidence');
+          assert.ok(!/console\.(?:log|warn|error|debug)\s*\(/.test(diagnostics), 'no diagnostic console output');
+          assert.ok(!/\b(access_token|refresh_token|password|secret|authorizationHeader|headers\s*:|responseBody\s*:)\b/i.test(diagnostics), 'diagnostics do not expose credential/header/body fields');
+          const cdp = section("ws.addEventListener('message',event=>{", 'const send=(method,params={})=>');
+          assert.ok(cdp.includes("network.requestExtraInfo.set(msg.params.requestId,authorizationPresent)"), 'ExtraInfo keyed by requestId');
+          assert.ok(!/console\.(?:log|warn|error|debug)\s*\(/.test(cdp), 'no CDP header logging');
+          console.log('STATIC_G03_CONTRACT_SECURITY=PASS');
+          NODE
+          echo 'STATIC_QUALIFICATION_PR90=PASS'
