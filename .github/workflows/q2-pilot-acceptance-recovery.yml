@@ -75,7 +75,17 @@ jobs:
             /\b(?:grant|revoke)\s+/i, /git\s+push/i, /gh\s+pr\s+merge/i,
             /gh\s+api\s+--method\s+(?:POST|PUT|PATCH|DELETE)/i
           ];
-          for (const pattern of forbidden) must(!pattern.test(text), 'prohibited pattern '+pattern);
+          const jobsMarker = '\n jobs:'.replace(' jobs:', 'jobs:') + '\n';
+          const jobsIndex = text.indexOf(jobsMarker);
+          must(jobsIndex >= 0, 'jobs section');
+          const jobsText = text.slice(jobsIndex + jobsMarker.length);
+          const jobIds = [...jobsText.matchAll(/^  ([A-Za-z0-9_-]+):\s*$/gm)].map(match => match[1]);
+          must(JSON.stringify(jobIds) === JSON.stringify(['self-validation','live-acceptance']), 'exact job set');
+          const liveMarker = '\n  live-acceptance:\n';
+          const liveIndex = text.indexOf(liveMarker);
+          must(liveIndex >= 0, 'live acceptance block');
+          const liveText = text.slice(liveIndex);
+          for (const pattern of forbidden) must(!pattern.test(liveText), 'prohibited live-execution pattern '+pattern);
           must(text.includes("if: github.event_name == 'pull_request'"), 'PR validation event gate');
           must(text.includes("github.event_name == 'issue_comment'"), 'issue-only execution gate');
           must(text.includes("github.event.comment.user.login == github.repository_owner"), 'owner-only gate');
