@@ -48,10 +48,44 @@ jobs:
           must(cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim() === process.env.HEAD_SHA, 'PR head');
           const changed = JSON.parse(cp.execFileSync('gh',['api', 'repos/'+process.env.REPO+'/pulls/'+process.env.PR_NUMBER+'/files', '--paginate', '--slurp'],{encoding:'utf8',env:process.env})).flat();
           must(changed.length === 1 && changed[0].filename === path && changed[0].status === 'added', 'exactly one added workflow file');
+          const uniqueSlice = (marker, reason) => {
+            const first = text.indexOf(marker);
+            must(first >= 0 && text.indexOf(marker, first + marker.length) < 0, reason);
+            return first;
+          };
+          const jobsIndex = uniqueSlice('\njobs:\n', 'unique top-level jobs');
+          const headerText = text.slice(0, jobsIndex);
+          const headerIndex = (marker, reason) => {
+            const first = headerText.indexOf(marker);
+            must(first >= 0 && headerText.indexOf(marker, first + marker.length) < 0, reason);
+            return first;
+          };
+          const onMarker = '\non:\n';
+          const permissionsMarker = '\npermissions:\n';
+          const concurrencyMarker = '\nconcurrency:\n';
+          const onIndex = headerIndex(onMarker, 'unique triggers');
+          const permissionsIndex = headerIndex(permissionsMarker, 'unique permissions');
+          const concurrencyIndex = headerIndex(concurrencyMarker, 'unique concurrency');
+          must(onIndex < permissionsIndex && permissionsIndex < concurrencyIndex && concurrencyIndex < jobsIndex, 'header ordering');
+          const onText = headerText.slice(onIndex + onMarker.length, permissionsIndex);
+          const triggerIds = [...onText.matchAll(/^  ([A-Za-z0-9_-]+):\s*$/gm)].map(m => m[1]);
+          must(JSON.stringify(triggerIds) === JSON.stringify(['issue_comment','pull_request']), 'exact trigger set');
+          must(/^    types: \[created\]\s*$/m.test(onText), 'exact issue comment type');
+          must(/^    branches: \[main\]\s*$/m.test(onText), 'exact PR base branches');
+          must(/^    paths:\s*\n      - \.github\/workflows\/q2-pilot-acceptance-recovery\.yml\s*$/m.test(onText), 'exact PR path');
+          const permissionsText = headerText.slice(permissionsIndex + permissionsMarker.length, concurrencyIndex);
+          const permissionEntries = [...permissionsText.matchAll(/^  ([A-Za-z0-9_-]+):\s*([A-Za-z]+)\s*$/gm)].map(m => [m[1],m[2]]);
+          must(JSON.stringify(permissionEntries) === JSON.stringify([['contents','read'],['id-token','write']]), 'exact permissions');
+          must(permissionsText.trim().split('\n').filter(Boolean).length === 2, 'no extra permissions');
+          const jobsText = text.slice(jobsIndex + '\njobs:\n'.length);
+          const jobIds = [...jobsText.matchAll(/^  ([A-Za-z0-9_-]+):\s*$/gm)].map(m => m[1]);
+          must(JSON.stringify(jobIds) === JSON.stringify(['self-validation','live-acceptance']), 'exact job set');
+          const liveMarker = '\n  live-acceptance:\n';
+          const liveIndex = uniqueSlice(liveMarker, 'unique live acceptance block');
+          must(liveIndex > jobsIndex, 'live acceptance after jobs');
+          const liveText = text.slice(liveIndex);
           const required = [
             'name: EMCORE PILOT Acceptance-Only Recovery',
-            'issue_comment:', 'types: [created]', 'pull_request:', 'branches: [main]',
-            'contents: read', 'id-token: write',
             "github.event.issue.number == 16",
             "github.event.comment.user.login == github.repository_owner",
             'RUN_PILOT_ACCEPTANCE_RECOVERY',
@@ -59,37 +93,26 @@ jobs:
             'acceptance_profile=LIVE_PILOT_OWNER_G03_V1',
             'actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8',
             'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',
-            'actions/upload-artifact@',
+            'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02',
             'persist-credentials: false',
             'LIVE_DEPLOYMENT_IDENTITY_EXACT=PASS',
             'PILOT_ACCEPTANCE_RECOVERY=PASS'
           ];
           for (const marker of required) must(text.includes(marker), 'missing contract '+marker);
           const forbidden = [
-            /workflow_dispatch\s*:/, /q2-request\.json/, /wrangler\s+deploy/i,
-            /deploy:cloudflare/i, /CLOUDFLARE_[A-Z_]*TOKEN/,
+            /q2-request\.json/i, /wrangler\s+deploy/i,
+            /deploy:cloudflare/i, /CLOUDFLARE_[A-Z_]*TOKEN/i,
             /api\.cloudflare\.com/i, /api\/deployments/i,
-            /SUPABASE_SERVICE_ROLE_KEY/, /SUPABASE_SECRET_KEY/,
+            /SUPABASE_SERVICE_ROLE_KEY/i, /SUPABASE_SECRET_KEY/i,
             /service_role/i, /apply_migration/i, /supabase\s+db/i,
             /\b(?:create|alter|drop)\s+(?:table|policy|role|function)\b/i,
             /\b(?:grant|revoke)\s+/i, /git\s+push/i, /gh\s+pr\s+merge/i,
             /gh\s+api\s+--method\s+(?:POST|PUT|PATCH|DELETE)/i
           ];
-          const jobsMarker = '\n jobs:'.replace(' jobs:', 'jobs:') + '\n';
-          const jobsIndex = text.indexOf(jobsMarker);
-          must(jobsIndex >= 0, 'jobs section');
-          const jobsText = text.slice(jobsIndex + jobsMarker.length);
-          const jobIds = [...jobsText.matchAll(/^  ([A-Za-z0-9_-]+):\s*$/gm)].map(match => match[1]);
-          must(JSON.stringify(jobIds) === JSON.stringify(['self-validation','live-acceptance']), 'exact job set');
-          const liveMarker = '\n  live-acceptance:\n';
-          const liveIndex = text.indexOf(liveMarker);
-          must(liveIndex >= 0, 'live acceptance block');
-          const liveText = text.slice(liveIndex);
           for (const pattern of forbidden) must(!pattern.test(liveText), 'prohibited live-execution pattern '+pattern);
           must(text.includes("if: github.event_name == 'pull_request'"), 'PR validation event gate');
-          must(text.includes("github.event_name == 'issue_comment'"), 'issue-only execution gate');
-          must(text.includes("github.event.comment.user.login == github.repository_owner"), 'owner-only gate');
-          must(!text.includes('pull_request_target:'), 'unsafe PR event');
+          must(liveText.includes("github.event_name == 'issue_comment'"), 'issue-only execution gate');
+          must(liveText.includes("github.event.comment.user.login == github.repository_owner"), 'owner-only gate');
           console.log('ACCEPTANCE_RECOVERY_EXECUTOR_SELF_VALIDATION=PASS');
           NODE
 
