@@ -74,13 +74,13 @@ jobs:
           grep -q "persist-credentials: false" .github/workflows/exact-source-qualification.yml
           grep -q "permissions:" .github/workflows/exact-source-qualification.yml
           ! grep -Eiq "workflow_call:|repository_dispatch:|deployment|wrangler deploy|supabase db push|service_role|Q29_BYPASS.*true" .github/workflows/exact-source-qualification.yml
-          grep -Fq "startsWith(github.event.comment.body, format('RUN_EXACT_SOURCE_QUALIFICATION{0}'" .github/workflows/exact-source-qualification.yml
-          grep -Fq "startsWith(github.event.comment.body, format('RUN_PILOT_ACCEPTANCE_RECOVERY{0}'" .github/workflows/q2-pilot-acceptance-recovery.yml
+          grep -Fq "startsWith(github.event.comment.body, 'RUN_EXACT_SOURCE_QUALIFICATION')" .github/workflows/exact-source-qualification.yml
+          grep -Fq "startsWith(github.event.comment.body, 'RUN_PILOT_ACCEPTANCE_RECOVERY')" .github/workflows/q2-pilot-acceptance-recovery.yml
           echo "OWNER_COMMAND_ROUTING_STATIC=PASS"
           echo "EXECUTOR_SELF_VALIDATION=PASS"
 
   qualify:
-    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'issue_comment' && github.event.issue.number == 16 && github.event.comment.user.login == github.repository_owner && startsWith(github.event.comment.body, format('RUN_EXACT_SOURCE_QUALIFICATION{0}', fromJSON('"\\n"'))))
+    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'issue_comment' && github.event.issue.number == 16 && github.event.comment.user.login == github.repository_owner && startsWith(github.event.comment.body, 'RUN_EXACT_SOURCE_QUALIFICATION'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
