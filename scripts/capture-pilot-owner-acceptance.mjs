@@ -89,16 +89,20 @@ async function openPage(baseUrl) {
   const ws=new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve,reject)=>{ws.addEventListener('open',resolve,{once:true});ws.addEventListener('error',reject,{once:true})});
   let seq=0; const pending=new Map();
-  const network={requests:new Map(),responses:new Map(),finished:new Set(),failed:new Map()};
+  const network={requests:new Map(),requestExtraInfo:new Map(),responses:new Map(),finished:new Set(),failed:new Map()};
   ws.addEventListener('message',event=>{
     const msg=JSON.parse(String(event.data));
     if(msg.method==='Network.requestWillBeSent') {
       const request=msg.params?.request;
       if(request && typeof msg.params?.requestId==='string') {
         const headers=request.headers && typeof request.headers==='object' ? request.headers : {};
-        const authenticated=Object.entries(headers).some(([key,value])=>key.toLowerCase()==='authorization' && String(value).startsWith('Bearer '));
-        network.requests.set(msg.params.requestId,{method:String(request.method||''),url:String(request.url||''),authenticated});
+        const authorizationPresent=Object.entries(headers).some(([key,value])=>key.toLowerCase()==='authorization' && String(value).startsWith('Bearer '));
+        network.requests.set(msg.params.requestId,{method:String(request.method||''),url:String(request.url||''),authorizationPresent});
       }
+    } else if(msg.method==='Network.requestWillBeSentExtraInfo' && typeof msg.params?.requestId==='string') {
+      const headers=msg.params?.headers && typeof msg.params.headers==='object' ? msg.params.headers : {};
+      const authorizationPresent=Object.entries(headers).some(([key,value])=>key.toLowerCase()==='authorization' && String(value).startsWith('Bearer '));
+      network.requestExtraInfo.set(msg.params.requestId,authorizationPresent);
     } else if(msg.method==='Network.responseReceived' && typeof msg.params?.requestId==='string') {
       const response=msg.params?.response;
       if(response) network.responses.set(msg.params.requestId,{status:Number(response.status),url:String(response.url||'')});
@@ -128,6 +132,63 @@ async function openPage(baseUrl) {
 function networkPathname(value) {
   try { return new URL(value).pathname; } catch { return ''; }
 }
+function requestAuthorizationPresent(browser,requestId,request) {
+  return request?.authorizationPresent===true || browser.network.requestExtraInfo.get(requestId)===true;
+}
+async function safeG03UiSnapshot(browser) {
+  return browser.evalJs(`(() => {
+    const normalize=(value)=>String(value||'').replace(/\\s+/g,' ').trim();
+    const supply=document.querySelector('.g03-context-grid select');
+    const start=document.querySelector('.g03-context-grid label:nth-child(2) input');
+    const end=document.querySelector('.g03-context-grid label:nth-child(3) input');
+    const button=[...document.querySelectorAll('.g03-context-grid button')].find((item)=>normalize(item.textContent)==='Carica dati canonici');
+    const message=[...document.querySelectorAll('[role="alert"],.g03-error,.g03-validation,.validation-error')]
+      .map((item)=>normalize(item.textContent))
+      .find(Boolean) || '';
+    return {
+      hash:location.hash,
+      supplyId:supply instanceof HTMLSelectElement ? supply.value : '',
+      periodStart:start instanceof HTMLInputElement ? start.value : '',
+      periodEnd:end instanceof HTMLInputElement ? end.value : '',
+      loadButtonText:button instanceof HTMLButtonElement ? normalize(button.textContent) : '',
+      loadButtonDisabled:button instanceof HTMLButtonElement ? button.disabled : null,
+      validationMessage:message.slice(0,240),
+    };
+  })()`);
+}
+function safeG03NetworkSnapshot(browser) {
+  return [...browser.network.requests.entries()]
+    .filter(([,request])=>networkPathname(request.url).startsWith('/api/g03/'))
+    .map(([requestId,request])=>{
+      const response=browser.network.responses.get(requestId);
+      const failed=browser.network.failed.get(requestId);
+      return {
+        method:request.method,
+        pathname:networkPathname(request.url),
+        authorizationPresent:requestAuthorizationPresent(browser,requestId,request),
+        status:response && Number.isFinite(response.status) ? response.status : null,
+        result:failed ? 'FAILED' : browser.network.finished.has(requestId) ? 'FINISHED' : response ? 'RESPONSE_PENDING' : 'REQUEST_ONLY',
+      };
+    })
+    .slice(-12);
+}
+async function g03SafeDiagnostic(browser) {
+  return {ui:await safeG03UiSnapshot(browser),network:safeG03NetworkSnapshot(browser)};
+}
+async function settleControlledInputs(browser) {
+  await browser.evalJs(`new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+}
+async function assertG03PreClickInvariants(browser) {
+  const snapshot=await safeG03UiSnapshot(browser);
+  const pass=
+    snapshot.hash===G03_SIMULATION_HASH &&
+    snapshot.supplyId===G03_SYNTHETIC_SUPPLY_ID &&
+    snapshot.periodStart===G03_SIMULATION_PERIOD_START &&
+    snapshot.periodEnd===G03_SIMULATION_PERIOD_END &&
+    snapshot.loadButtonText==='Carica dati canonici' &&
+    snapshot.loadButtonDisabled===false;
+  if(!pass) throw new Error('G03 PRE_CLICK_INVARIANT '+JSON.stringify({ui:snapshot,network:safeG03NetworkSnapshot(browser)}));
+}
 async function waitForG03EndpointProof(browser,method,pathname,timeout=20000) {
   const started=Date.now();
   while(Date.now()-started<timeout) {
@@ -135,10 +196,11 @@ async function waitForG03EndpointProof(browser,method,pathname,timeout=20000) {
     if(match) {
       const [requestId,request]=match;
       const failed=browser.network.failed.get(requestId);
-      if(failed) throw new Error('G03 '+method+' '+pathname+' network failure: '+failed);
+      if(failed) throw new Error('G03 NETWORK_FAILURE '+method+' '+pathname+' '+JSON.stringify(await g03SafeDiagnostic(browser)));
       const response=browser.network.responses.get(requestId);
       if(response && browser.network.finished.has(requestId)) {
-        if(!request.authenticated) throw new Error('G03 '+method+' '+pathname+' did not carry authenticated browser authority');
+        const authorizationPresent=requestAuthorizationPresent(browser,requestId,request);
+        if(!authorizationPresent) throw new Error('G03 '+method+' '+pathname+' did not carry authenticated browser authority');
         if(!Number.isInteger(response.status) || response.status<200 || response.status>=300) throw new Error('G03 '+method+' '+pathname+' failed: HTTP '+response.status);
         const responseBody=await browser.send('Network.getResponseBody',{requestId});
         const raw=responseBody.base64Encoded ? Buffer.from(responseBody.body,'base64').toString('utf8') : responseBody.body;
@@ -147,10 +209,13 @@ async function waitForG03EndpointProof(browser,method,pathname,timeout=20000) {
         if(payload?.organizationId!==PILOT_ORGANIZATION_ID || payload?.supplyId!==G03_SYNTHETIC_SUPPLY_ID) throw new Error('G03 '+method+' '+pathname+' response identity mismatch');
         return {method,pathname,status:response.status,pass:true,responseIdentityVerified:true,authenticated:true};
       }
+    } else {
+      const snapshot=await safeG03UiSnapshot(browser);
+      if(snapshot.validationMessage) throw new Error('G03 UI_VALIDATION_BLOCK '+method+' '+pathname+' '+JSON.stringify({ui:snapshot,network:safeG03NetworkSnapshot(browser)}));
     }
     await new Promise(r=>setTimeout(r,120));
   }
-  throw new Error('Timed out waiting for authenticated G03 '+method+' '+pathname);
+  throw new Error('G03 NETWORK_NOT_OBSERVED_TIMEOUT '+method+' '+pathname+' '+JSON.stringify(await g03SafeDiagnostic(browser)));
 }
 async function setBrowserInput(browser,selector,value) {
   await browser.evalJs(`(() => {
@@ -178,6 +243,8 @@ async function performG03LiveEndpointAcceptance(browser) {
   if(!exactContext) throw new Error('G03 synthetic organization/supply navigation context mismatch');
   await setBrowserInput(browser,'.g03-context-grid label:nth-child(2) input',G03_SIMULATION_PERIOD_START);
   await setBrowserInput(browser,'.g03-context-grid label:nth-child(3) input',G03_SIMULATION_PERIOD_END);
+  await settleControlledInputs(browser);
+  await assertG03PreClickInvariants(browser);
   await clickBrowserButtonByText(browser,'.g03-context-grid button','Carica dati canonici');
   const canonicalInputGet=await waitForG03EndpointProof(browser,'GET',G03_INPUT_ENDPOINT_PATH);
   await waitFor(async()=>await browser.evalJs("Boolean(document.querySelector('.g03-canonical')) && document.body.innerText.includes('Dati canonici')"),20000);
