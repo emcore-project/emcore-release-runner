@@ -57,7 +57,9 @@ jobs:
           set -euo pipefail
           test "${{ github.base_ref }}" = "main"
           changed="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
-          test "$changed" = ".github/workflows/exact-source-qualification.yml"
+          test "$changed" = "$(printf '%s\n' '.github/workflows/exact-source-qualification.yml' '.github/workflows/q2-pilot-acceptance-recovery.yml')"
+          test "$(git diff --name-status "origin/${{ github.base_ref }}...HEAD")" = "$(printf 'M\t%s\nM\t%s' '.github/workflows/exact-source-qualification.yml' '.github/workflows/q2-pilot-acceptance-recovery.yml')"
+          test "$(git rev-list --count "origin/${{ github.base_ref }}..${{ github.event.pull_request.head.sha }}")" = 1
           grep -q "workflow_dispatch:" .github/workflows/exact-source-qualification.yml
           grep -q "issue_comment:" .github/workflows/exact-source-qualification.yml
           grep -q "github.event.issue.number == 16" .github/workflows/exact-source-qualification.yml
@@ -72,10 +74,13 @@ jobs:
           grep -q "persist-credentials: false" .github/workflows/exact-source-qualification.yml
           grep -q "permissions:" .github/workflows/exact-source-qualification.yml
           ! grep -Eiq "workflow_call:|repository_dispatch:|deployment|wrangler deploy|supabase db push|service_role|Q29_BYPASS.*true" .github/workflows/exact-source-qualification.yml
+          grep -Fq "startsWith(github.event.comment.body, format('RUN_EXACT_SOURCE_QUALIFICATION{0}'" .github/workflows/exact-source-qualification.yml
+          grep -Fq "startsWith(github.event.comment.body, format('RUN_PILOT_ACCEPTANCE_RECOVERY{0}'" .github/workflows/q2-pilot-acceptance-recovery.yml
+          echo "OWNER_COMMAND_ROUTING_STATIC=PASS"
           echo "EXECUTOR_SELF_VALIDATION=PASS"
 
   qualify:
-    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'issue_comment' && github.event.issue.number == 16 && github.event.comment.user.login == github.repository_owner)
+    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'issue_comment' && github.event.issue.number == 16 && github.event.comment.user.login == github.repository_owner && startsWith(github.event.comment.body, format('RUN_EXACT_SOURCE_QUALIFICATION{0}', fromJSON('"\\n"'))))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:

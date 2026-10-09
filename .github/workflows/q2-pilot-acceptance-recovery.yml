@@ -47,7 +47,11 @@ jobs:
           must(process.env.REPO === 'emcore-project/emcore-release-runner', 'repository');
           must(cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim() === process.env.HEAD_SHA, 'PR head');
           const changed = JSON.parse(cp.execFileSync('gh',['api', 'repos/'+process.env.REPO+'/pulls/'+process.env.PR_NUMBER+'/files', '--paginate', '--slurp'],{encoding:'utf8',env:process.env})).flat();
-          must(changed.length === 1 && changed[0].filename === path && changed[0].status === 'added', 'exactly one added workflow file');
+          const expected = ['.github/workflows/exact-source-qualification.yml', path];
+          must(changed.length === 2 && expected.every((p,i)=>changed[i].filename===p && changed[i].status==='modified'), 'exactly two modified workflow files');
+          must(text.includes("startsWith(github.event.comment.body, format('RUN_PILOT_ACCEPTANCE_RECOVERY{0}'"), 'pilot job marker gate');
+          const exactText = fs.readFileSync(expected[0], 'utf8');
+          must(exactText.includes("startsWith(github.event.comment.body, format('RUN_EXACT_SOURCE_QUALIFICATION{0}'"), 'exact source job marker gate');
           const uniqueSlice = (marker, reason) => {
             const first = text.indexOf(marker);
             must(first >= 0 && text.indexOf(marker, first + marker.length) < 0, reason);
@@ -117,7 +121,7 @@ jobs:
           NODE
 
   live-acceptance:
-    if: github.event_name == 'issue_comment' && github.event.issue.number == 16 && github.event.comment.user.login == github.repository_owner
+    if: github.event_name == 'issue_comment' && github.event.issue.number == 16 && github.event.comment.user.login == github.repository_owner && startsWith(github.event.comment.body, format('RUN_PILOT_ACCEPTANCE_RECOVERY{0}', fromJSON('"\\n"')))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
